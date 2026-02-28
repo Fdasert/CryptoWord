@@ -27,20 +27,18 @@ export default function Home() {
   const [timeLeft, setTimeLeft] = useState(CONFIG.INITIAL_TIME);
 
   const fetchNewWord = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(`https://api.datamuse.com/words?sp=${'?'.repeat(CONFIG.WORD_LENGTH)}&max=100`);
-      const data = await response.json();
-      const validWords = data.filter((w: any) => /^[a-zA-Z]{7}$/.test(w.word));
-      const randomWord = validWords[Math.floor(Math.random() * validWords.length)].word;
-      setSecretWord(randomWord.toUpperCase());
-    } catch (error) {
-      console.error("API Error:", error);
-      setSecretWord("SOLANAS");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  setIsLoading(true);
+  try {
+    const response = await fetch('/api/word'); 
+    const data = await response.json();
+    setSecretWord(data.word.toUpperCase());
+  } catch (error) {
+    console.error("API Error:", error);
+    setSecretWord("SOLANAS");
+  } finally {
+    setIsLoading(false);
+  }
+}, []);
 
   const startNewGame = useCallback(() => {
     setGuesses(Array(CONFIG.MAX_ATTEMPTS).fill(""));
