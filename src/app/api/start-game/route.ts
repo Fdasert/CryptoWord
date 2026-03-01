@@ -28,7 +28,9 @@ export async function POST(req: Request) {
 
     // 3. Отдаем клиенту только ID игры
     return NextResponse.json({ gameId: game.id });
+    
   } catch (err: any) {
+    console.error("DETAILED ERROR:", err); // <-- Эта строка покажет причину в терминале VS Code
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
