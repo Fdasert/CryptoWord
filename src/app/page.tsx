@@ -117,12 +117,16 @@ const AppContent = () => {
         <p className="text-[10px] uppercase text-zinc-500 mb-4 tracking-widest">{status}</p>
         {publicKey ? (
           <button 
-            onClick={handlePaymentAndSubmit}
-            disabled={currentGuess.length < 5 || isProcessing}
-            className={`w-full py-4 font-black transition-all ${currentGuess.length === 5 && !isProcessing ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20' : 'bg-zinc-800 text-zinc-600'}`}
-          >
-            {isProcessing ? "WAIT..." : "PAY & SUBMIT"}
-          </button>
+  onClick={handlePaymentAndSubmit}
+  // Теперь кнопка зависит ТОЛЬКО от наличия 5 букв и процесса загрузки
+  disabled={currentGuess.length !== 5 || isProcessing} 
+  className={`w-full py-4 font-black transition-all 
+    ${currentGuess.length === 5 && !isProcessing 
+      ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/50 cursor-pointer' 
+      : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}
+>
+  {isProcessing ? "PROCESSING..." : "PAY & SUBMIT"}
+</button>
         ) : (
           <div className="p-5 border border-zinc-800 rounded">
             <p className="text-xs text-zinc-500 mb-3">Login to participate</p>
