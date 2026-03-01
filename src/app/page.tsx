@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 // --- КОНФИГУРАЦИЯ ---
-const RECEIVER_WALLET = new PublicKey("ВАШ_SOLANA_АДРЕС"); // ЗАМЕНИ НА СВОЙ
+const RECEIVER_WALLET = new PublicKey("QVWqd5fSxaFfT1cdxcmNYofqKFM8tFBJMw97kwRWKpS"); 
 const network = WalletAdapterNetwork.Devnet;
 
 const AppContent = () => {
