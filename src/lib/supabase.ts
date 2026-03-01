@@ -8,6 +8,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error("MISSING SUPABASE KEYS! Check .env.local");
 }
 
+console.log("Supabase URL:", supabaseUrl);
+console.log("Supabase Key Loaded:", !!supabaseAnonKey);
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: false // Для игры нам не нужно хранить сессию юзера
