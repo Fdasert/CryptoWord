@@ -58,18 +58,21 @@ const AppContent = () => {
 
   // 3. Главная функция: Оплата + Ход
   const handlePaymentAndSubmit = async () => {
-    if (currentGuess.length < 5 || !publicKey || !roundId) return;
+  if (currentGuess.length < 5 || !publicKey || !roundId) return;
 
-    try {
-      setStatus("Processing transaction...");
-      
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: publicKey,
-          toPubkey: RECEIVER_WALLET,
-          lamports: 0.001 * LAMPORTS_PER_SOL,
-        })
-      );
+  try {
+    // Создаем объект PublicKey прямо здесь
+    const receiver = new PublicKey(RECEIVER_WALLET); 
+    
+    setStatus("Processing transaction...");
+    
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: publicKey,
+        toPubkey: receiver, // Используем созданный объект
+        lamports: 0.001 * LAMPORTS_PER_SOL,
+      })
+    );
 
       const signature = await sendTransaction(transaction, connection);
       await connection.confirmTransaction(signature, 'processed');
