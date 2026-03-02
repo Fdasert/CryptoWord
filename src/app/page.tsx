@@ -1,5 +1,6 @@
 'use client';
 
+import { WalletConnectWalletAdapter } from '@solana/wallet-adapter-walletconnect';
 import React, { useMemo, useState, useEffect } from 'react';
 import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
@@ -8,11 +9,14 @@ import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-r
 import { clusterApiUrl, Connection, Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { supabase } from '@/lib/supabase';
 import dynamic from 'next/dynamic';
+import { TrustWalletAdapter } from '@solana/wallet-adapter-trust'; // Добавь этот импорт
+
+
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 const RECEIVER_WALLET_STR = "QVWqd5fSxaFfT1cdxcmNYofqKFM8tFBJMw97kwRWKpS"; // Убедись, что тут твой кошелек
-const network = WalletAdapterNetwork.Devnet;
+const network = WalletAdapterNetwork.Mainnet;
 const WORD_LENGTH = 7; // Устанавливаем 7 букв
 
 const AppContent = () => {
@@ -163,7 +167,23 @@ const AppContent = () => {
 const GlobalWordleComponent = dynamic(() => Promise.resolve(AppContent), { ssr: false });
 
 export default function GlobalWordle() {
-  const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
+  const wallets = useMemo(() => [
+  new PhantomWalletAdapter(),
+  new SolflareWalletAdapter(),
+  new WalletConnectWalletAdapter({
+    network: WalletAdapterNetwork.Mainnet,
+    options: {
+      projectId: '', // Можно оставить пустым для теста, но лучше создать на cloud.walletconnect.com
+      relayUrl: 'wss://relay.walletconnect.com',
+      metadata: {
+        name: 'Sol Wordle',
+        description: 'Solana Wordle Game',
+        url: 'https://your-site.com',
+        icons: ['https://your-site.com/icon.png'],
+      },
+    },
+  }),
+], []);
   return (
     <ConnectionProvider endpoint={clusterApiUrl(network)}>
       <WalletProvider wallets={wallets} autoConnect>
