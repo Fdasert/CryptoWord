@@ -116,17 +116,23 @@ const AppContent = () => {
       <div className="w-full max-w-xs text-center">
         <p className="text-[10px] uppercase text-zinc-500 mb-4 tracking-widest">{status}</p>
         {publicKey ? (
-          <button 
-  onClick={handlePaymentAndSubmit}
-  disabled={currentGuess.length !== 5 || isProcessing}
-  className={`w-full py-4 font-black transition-all duration-200
-    ${currentGuess.length === 5 && !isProcessing 
-      ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.5)] cursor-pointer' 
-      : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}>
-  {isProcessing ? "PROCESSING..." : (
-    !publicKey ? "CONNECT WALLET" : "PAY 0.001 SOL & SUBMIT"
-  )}
-</button>
+          <div className="w-full max-w-xs text-center mt-10">
+  <p className="text-[10px] text-zinc-500 mb-4 uppercase tracking-widest">
+    {currentGuess.length < 5 ? `Type ${5 - currentGuess.length} more letters` : status}
+  </p>
+
+  <button 
+    onClick={handlePaymentAndSubmit}
+    // Кнопка станет активной, как только введено 5 букв, даже если база еще тупит
+    disabled={currentGuess.length !== 5 || isProcessing}
+    className={`w-full py-4 font-black transition-all border-2 
+      ${currentGuess.length === 5 && !isProcessing 
+        ? 'bg-cyan-500 border-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.4)] cursor-pointer' 
+        : 'bg-zinc-900 border-zinc-800 text-zinc-700 cursor-not-allowed'}`}
+  >
+    {isProcessing ? "WAIT..." : "PAY 0.001 SOL & SUBMIT"}
+  </button>
+</div>
         ) : (
           <div className="p-5 border border-zinc-800 rounded">
             <p className="text-xs text-zinc-500 mb-3">Login to participate</p>
