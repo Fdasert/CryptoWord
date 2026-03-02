@@ -118,14 +118,15 @@ const AppContent = () => {
         {publicKey ? (
           <button 
   onClick={handlePaymentAndSubmit}
-  // Теперь кнопка зависит ТОЛЬКО от наличия 5 букв и процесса загрузки
-  disabled={currentGuess.length !== 5 || isProcessing} 
-  className={`w-full py-4 font-black transition-all 
+  disabled={currentGuess.length < 5 || isProcessing} 
+  className={`w-full py-4 font-black transition-all duration-200
     ${currentGuess.length === 5 && !isProcessing 
-      ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/50 cursor-pointer' 
+      ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.5)] cursor-pointer' 
       : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}
 >
-  {isProcessing ? "PROCESSING..." : "PAY & SUBMIT"}
+  {isProcessing ? "PROCESSING..." : (
+    !publicKey ? "CONNECT WALLET" : "PAY 0.001 SOL & SUBMIT"
+  )}
 </button>
         ) : (
           <div className="p-5 border border-zinc-800 rounded">
