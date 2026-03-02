@@ -27,7 +27,7 @@ const AppContent = () => {
   const [status, setStatus] = useState("Connect wallet and type 7 letters");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const connection = useMemo(() => new Connection(clusterApiUrl(network)), []);
+  const connection = useMemo(() => new Connection("https://mainnet.helius-rpc.com/?api-key=676b709c-1c3e-4fba-a47d-5cd3f2e78283"), []);
 
   // Загрузка данных
   useEffect(() => {
