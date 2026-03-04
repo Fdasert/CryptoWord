@@ -8,16 +8,19 @@ import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adap
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl, Connection, Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { supabase } from '@/lib/supabase';
-import dynamic from 'next/dynamic';
-import { TrustWalletAdapter } from '@solana/wallet-adapter-trust'; // Добавь этот импорт
+import nextDynamic from 'next/dynamic';
+import { TrustWalletAdapter } from '@solana/wallet-adapter-trust'; 
+
+export const dynamic = 'force-dynamic';
+
 
 
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-const RECEIVER_WALLET_STR = "QVWqd5fSxaFfT1cdxcmNYofqKFM8tFBJMw97kwRWKpS"; // Убедись, что тут твой кошелек
+const RECEIVER_WALLET_STR = "QVWqd5fSxaFfT1cdxcmNYofqKFM8tFBJMw97kwRWKpS"; 
 const network = WalletAdapterNetwork.Mainnet;
-const WORD_LENGTH = 7; // Устанавливаем 7 букв
+const WORD_LENGTH = 7;
 
 const AppContent = () => {
   const { publicKey, sendTransaction } = useWallet();
@@ -164,7 +167,7 @@ const AppContent = () => {
   );
 };
 
-const GlobalWordleComponent = dynamic(() => Promise.resolve(AppContent), { ssr: false });
+const GlobalWordleComponent = nextDynamic(() => Promise.resolve(AppContent), { ssr: false });
 
 export default function GlobalWordle() {
   const wallets = useMemo(() => [
