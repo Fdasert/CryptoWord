@@ -13,6 +13,6 @@ console.log("Supabase Key Loaded:", !!supabaseAnonKey);
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: false // Для игры нам не нужно хранить сессию юзера
+    persistSession: false 
   }
 });
