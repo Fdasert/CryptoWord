@@ -1,16 +1,14 @@
 'use client';
 
-import { WalletConnectWalletAdapter } from '@solana/wallet-adapter-walletconnect';
 import React, { useMemo, useState, useEffect } from 'react';
 import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { clusterApiUrl, Connection, Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { supabase } from '@/lib/supabase';
-import nextDynamic from 'next/dynamic';
-import { TrustWalletAdapter } from '@solana/wallet-adapter-trust'; 
-
+import NextDynamic from 'next/dynamic'; // ПЕРЕИМЕНОВАЛИ ИМПОРТ
+import '@solana/wallet-adapter-react-ui/styles.css';
 export const dynamic = 'force-dynamic';
 
 
@@ -19,6 +17,7 @@ export const dynamic = 'force-dynamic';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 const RECEIVER_WALLET_STR = "QVWqd5fSxaFfT1cdxcmNYofqKFM8tFBJMw97kwRWKpS"; 
+const MAINNET_RPC = "https://api.mainnet-beta.solana.com";
 const network = WalletAdapterNetwork.Mainnet;
 const WORD_LENGTH = 7;
 
@@ -167,28 +166,14 @@ const AppContent = () => {
   );
 };
 
-const GlobalWordleComponent = nextDynamic(() => Promise.resolve(AppContent), { ssr: false });
+const GlobalWordleComponent = NextDynamic(() => Promise.resolve(AppContent), { ssr: false });
 
 export default function GlobalWordle() {
-  const wallets = useMemo(() => [
-  new PhantomWalletAdapter(),
-  new SolflareWalletAdapter(),
-  new WalletConnectWalletAdapter({
-    network: WalletAdapterNetwork.Mainnet,
-    options: {
-      projectId: '', // Можно оставить пустым для теста, но лучше создать на cloud.walletconnect.com
-      relayUrl: 'wss://relay.walletconnect.com',
-      metadata: {
-        name: 'Sol Wordle',
-        description: 'Solana Wordle Game',
-        url: 'https://your-site.com',
-        icons: ['https://your-site.com/icon.png'],
-      },
-    },
-  }),
-], []);
+  const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
+  
+  // Используем прямой URL вместо clusterApiUrl для надежности
   return (
-    <ConnectionProvider endpoint={clusterApiUrl(network)}>
+    <ConnectionProvider endpoint={MAINNET_RPC}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider><GlobalWordleComponent /></WalletModalProvider>
       </WalletProvider>
