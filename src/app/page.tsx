@@ -165,27 +165,32 @@ const AppContent = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (!round || round.status !== 'active' || round.winner_wallet) return;
     setTimeLeft(Math.max(0, Math.floor((new Date(round.end_time).getTime() - Date.now()) / 1000)));
-    timerRef.current = setInterval(async () => {
+    timerRef.current = setInterval(() => {
       const secs = Math.max(0, Math.floor((new Date(round.end_time).getTime() - Date.now()) / 1000));
       setTimeLeft(secs);
       if (secs === 0) {
         clearInterval(timerRef.current);
-        // End round on server
-        const erRes  = await fetch(edgeFn('end-round'), { method:'POST', headers:apiH(), body:JSON.stringify({ round_id: round.id }) });
-        const erData = await erRes.json();
-        if (erData.revealed_word) setRevealedWord(erData.revealed_word);
-        // Show "next round" countdown for 10 seconds
+
+        // 1. Show overlay IMMEDIATELY — no waiting for server
         setNextRoundIn(10);
+
+        // 2. Call end-round in background (fire & forget)
+        fetch(edgeFn('end-round'), { method:'POST', headers:apiH(), body:JSON.stringify({ round_id: round.id }) })
+          .then(r => r.json())
+          .then(data => { if (data.revealed_word) setRevealedWord(data.revealed_word); })
+          .catch(console.error);
+
+        // 3. Countdown — loadRound only at the very end (new round is ready by then)
+        let remaining = 10;
         const cd = setInterval(() => {
-          setNextRoundIn(p => {
-            if (p <= 1) {
-              clearInterval(cd);
-              setInput(''); setWinner(null); setStatus(''); setMyCount(0); setHasPending(false); setNextRoundIn(0); setRevealedWord(null);
-              loadRound();
-              return 0;
-            }
-            return p - 1;
-          });
+          remaining -= 1;
+          setNextRoundIn(remaining);
+          if (remaining <= 0) {
+            clearInterval(cd);
+            setInput(''); setWinner(null); setStatus(''); setMyCount(0);
+            setHasPending(false); setRevealedWord(null);
+            loadRound(); // called once, after 10s — round is already created on server
+          }
         }, 1000);
       }
     }, 1000);
