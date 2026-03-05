@@ -324,7 +324,8 @@ const AppContent = () => {
 
       const sig = await sendTransaction(tx, connection);
       setStatusMsg('Verifying on Solana...');
-      await connection.confirmTransaction(sig, 'confirmed');
+      // Небольшая пауза чтобы транзакция успела попасть в RPC
+      await new Promise(r => setTimeout(r, 4000));
 
       // Верифицируем через Edge Function
       const res = await fetch(edgeFn('verify-payment'), {
