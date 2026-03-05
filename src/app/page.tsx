@@ -132,6 +132,7 @@ const AppContent = () => {
   const [shake,      setShake]      = useState(false);
   const [nextRoundIn,  setNextRoundIn]  = useState(0);
   const [revealedWord, setRevealedWord] = useState<string|null>(null);
+  const [showHowTo,    setShowHowTo]    = useState(false);
 
   const timerRef  = useRef<any>(null);
   const payoutRef = useRef<any>(null);
@@ -333,16 +334,43 @@ const AppContent = () => {
         @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-5px)}40%,80%{transform:translateX(5px)}}
         @keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+        @keyframes modalIn{from{opacity:0;transform:scale(0.95) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}
+
+        /* ── Mobile ── */
+        @media(max-width:640px){
+          .sol-header { padding: 10px 14px !important; }
+          .sol-logo-sub { display: none !important; }
+          .sol-stats { padding: 8px 14px !important; gap: 10px !important; font-size: 12px !important; }
+          .sol-body { padding: 12px 10px !important; flex-direction: column !important; }
+          .sol-feed-col { padding-right: 0 !important; max-width: 100% !important; }
+          .sol-feed-box { min-height: 220px !important; max-height: 280px !important; }
+          .sol-controls-col { flex: 1 1 auto !important; width: 100% !important; }
+          .sol-timer-widget { padding: 12px 16px !important; }
+          .wallet-adapter-button { font-size: 12px !important; height: 34px !important; padding: 0 10px !important; }
+        }
       `}</style>
 
       {/* Header */}
-      <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 24px', borderBottom:'1px solid #27272a' }}>
+      <header className='sol-header' style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 24px', borderBottom:'1px solid #27272a' }}>
         <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
           <span style={{ fontSize:24, fontWeight:800, letterSpacing:-1 }}>SOL</span>
           <span style={{ fontSize:24, fontWeight:800, color:'#a78bfa', letterSpacing:-1 }}>WORD</span>
-          <span style={{ fontSize:11, color:'#52525b', marginLeft:4 }}>Guess the 7-letter word · win the pool</span>
+          <span className='sol-logo-sub' style={{ fontSize:11, color:'#52525b', marginLeft:4 }}>Guess the 7-letter word · win the pool</span>
         </div>
-        <WalletMultiButton style={{ height:38, fontSize:13, background:'#7c3aed' }}/>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <button onClick={() => setShowHowTo(true)} style={{
+            height:38, padding:'0 14px', borderRadius:8, border:'1px solid #3f3f46',
+            background:'transparent', color:'#a1a1aa', fontSize:13, fontWeight:600,
+            cursor:'pointer', display:'flex', alignItems:'center', gap:6, transition:'all 0.2s',
+            fontFamily:"inherit",
+          }}
+            onMouseEnter={e=>(e.currentTarget.style.borderColor='#7c3aed',e.currentTarget.style.color='#a78bfa')}
+            onMouseLeave={e=>(e.currentTarget.style.borderColor='#3f3f46',e.currentTarget.style.color='#a1a1aa')}
+          >
+            <span style={{fontSize:16}}>?</span> How to Play
+          </button>
+          <WalletMultiButton style={{ height:38, fontSize:13, background:'#7c3aed' }}/>
+        </div>
       </header>
 
       {/* Round Over overlay */}
@@ -400,7 +428,7 @@ const AppContent = () => {
       </div>
 
       {/* Stats */}
-      <div style={{ display:'flex', gap:20, padding:'9px 24px', borderBottom:'1px solid #27272a', background:'#0f0f10', fontSize:13, alignItems:'center', flexWrap:'wrap' }}>
+      <div className='sol-stats' style={{ display:'flex', gap:20, padding:'9px 24px', borderBottom:'1px solid #27272a', background:'#0f0f10', fontSize:13, alignItems:'center', flexWrap:'wrap' }}>
         <span>💰 <b style={{ color:'#fbbf24' }}>{(round?.prize_pool ?? 0).toFixed(4)} SOL</b> prize pool</span>
         <span style={{ color:'#3f3f46' }}>·</span>
         <span style={{ color:'#71717a' }}>0.01 SOL / attempt · unlimited tries</span>
@@ -413,16 +441,16 @@ const AppContent = () => {
       </div>
 
       {/* Body: two-column */}
-      <div style={{ flex:1, display:'flex', gap:0, justifyContent:'center', padding:'20px 16px', flexWrap:'wrap' }}>
+      <div className='sol-body' style={{ flex:1, display:'flex', gap:0, justifyContent:'center', padding:'20px 16px', flexWrap:'wrap' }}>
 
         {/* LEFT: Live feed — newest on top */}
-        <div style={{ flex:'1 1 320px', maxWidth:500, display:'flex', flexDirection:'column', gap:8, paddingRight:16 }}>
+        <div className='sol-feed-col' style={{ flex:'1 1 320px', maxWidth:500, display:'flex', flexDirection:'column', gap:8, paddingRight:16 }}>
           <div style={{ fontSize:11, color:'#52525b', letterSpacing:1, textTransform:'uppercase', display:'flex', alignItems:'center', gap:6 }}>
             <span style={{ width:7, height:7, borderRadius:'50%', background:'#ef4444', display:'inline-block', animation:'pulse 1.2s infinite' }}/>
             Live feed · newest first
             {allGuesses.length > 0 && <span style={{ color:'#3f3f46', marginLeft:4 }}>{allGuesses.length} attempt{allGuesses.length !== 1 ? 's' : ''}</span>}
           </div>
-          <div style={{ background:'#18181b', borderRadius:10, padding:'10px 14px',
+          <div className='sol-feed-box' style={{ background:'#18181b', borderRadius:10, padding:'10px 14px',
             flex:1, minHeight:420, maxHeight:580, overflowY:'auto', border:'1px solid #27272a' }}>
             {allGuesses.length === 0
               ? <div style={{ color:'#3f3f46', textAlign:'center', marginTop:150, fontSize:14 }}>No attempts yet — be first!</div>
@@ -432,11 +460,11 @@ const AppContent = () => {
         </div>
 
         {/* RIGHT: Timer + controls */}
-        <div style={{ flex:'0 0 300px', display:'flex', flexDirection:'column', alignItems:'center', gap:14 }}>
+        <div className='sol-controls-col' style={{ flex:'0 0 300px', display:'flex', flexDirection:'column', alignItems:'center', gap:14 }}>
 
           {/* Timer widget */}
           {isActive && (
-            <div style={{ background:'#18181b', border:'1px solid #27272a', borderRadius:16,
+            <div className='sol-timer-widget' style={{ background:'#18181b', border:'1px solid #27272a', borderRadius:16,
               padding:'18px 32px', display:'flex', flexDirection:'column', alignItems:'center', gap:8, width:'100%' }}>
               <div style={{ fontSize:11, color:'#52525b', textTransform:'uppercase', letterSpacing:1 }}>Round ends in</div>
               <CircleTimer timeLeft={timeLeft} total={ROUND_SECS}/>
@@ -506,6 +534,95 @@ const AppContent = () => {
           )}
         </div>
       </div>
+
+      {/* ── How to Play Modal ── */}
+      {showHowTo && (
+        <div
+          onClick={() => setShowHowTo(false)}
+          style={{
+            position:'fixed', inset:0, zIndex:100,
+            background:'rgba(9,9,11,0.85)', backdropFilter:'blur(10px)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            padding:16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background:'#111113', border:'1px solid #27272a', borderRadius:20,
+              padding:'32px 28px', maxWidth:440, width:'100%',
+              animation:'modalIn 0.3s ease',
+              maxHeight:'90vh', overflowY:'auto',
+            }}
+          >
+            {/* Title */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+              <div>
+                <span style={{ fontSize:22, fontWeight:800 }}>SOL</span>
+                <span style={{ fontSize:22, fontWeight:800, color:'#a78bfa' }}>WORD</span>
+                <div style={{ fontSize:12, color:'#52525b', marginTop:2 }}>How to Play</div>
+              </div>
+              <button onClick={() => setShowHowTo(false)} style={{
+                width:32, height:32, borderRadius:'50%', border:'1px solid #3f3f46',
+                background:'transparent', color:'#71717a', fontSize:18, cursor:'pointer',
+                display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'inherit',
+              }}>×</button>
+            </div>
+
+            {/* Steps */}
+            {[
+              { n:'1', icon:'🔗', title:'Connect your wallet', body:'Click "Connect Wallet" and choose Phantom or Solflare. Make sure you have at least 0.01 SOL.' },
+              { n:'2', icon:'🔮', title:'Pay 0.01 SOL to enter', body:'Each attempt costs 0.01 SOL. Your payment goes directly into the prize pool — the more players, the bigger the reward.' },
+              { n:'3', icon:'⌨️', title:'Type a 7-letter word', body:'Use the keyboard or your physical keys. Type any 7-letter English word and press SUBMIT GUESS.' },
+              { n:'4', icon:'🎨', title:'Read the color hints', body:'After each guess you see colored tiles. Use them to narrow down the word.' },
+              { n:'5', icon:'🏆', title:'First to guess wins all', body:'The first player to guess the exact word wins 95% of the prize pool. Prize is sent automatically within 5 minutes.' },
+            ].map(s => (
+              <div key={s.n} style={{ display:'flex', gap:14, marginBottom:20 }}>
+                <div style={{
+                  width:36, height:36, borderRadius:10, background:'rgba(124,58,237,0.15)',
+                  border:'1px solid rgba(124,58,237,0.3)', display:'flex', alignItems:'center',
+                  justifyContent:'center', fontSize:18, flexShrink:0,
+                }}>{s.icon}</div>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:14, marginBottom:3 }}>{s.title}</div>
+                  <div style={{ fontSize:13, color:'#71717a', lineHeight:1.6 }}>{s.body}</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Color legend */}
+            <div style={{ background:'#18181b', borderRadius:12, padding:'16px', marginBottom:20 }}>
+              <div style={{ fontSize:11, color:'#52525b', letterSpacing:1, textTransform:'uppercase', marginBottom:12 }}>Color guide</div>
+              {[
+                { color:'#538d4e', label:'Correct letter, correct position' },
+                { color:'#b59f3b', label:'Correct letter, wrong position' },
+                { color:'#3a3a3c', label:'Letter not in the word' },
+              ].map(({ color, label }) => (
+                <div key={color} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                  <div style={{ width:32, height:32, borderRadius:4, background:color, flexShrink:0 }}/>
+                  <span style={{ fontSize:13, color:'#a1a1aa' }}>{label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Rules */}
+            <div style={{ fontSize:12, color:'#52525b', lineHeight:1.8, borderTop:'1px solid #27272a', paddingTop:16 }}>
+              ⏱ Each round lasts <b style={{color:'#71717a'}}>120 seconds</b><br/>
+              ♾️ <b style={{color:'#71717a'}}>Unlimited attempts</b> — pay 0.01 SOL for each<br/>
+              🔄 If no one wins, prize pool <b style={{color:'#71717a'}}>rolls over</b> to the next round<br/>
+              👁️ All guesses are <b style={{color:'#71717a'}}>visible to everyone</b> in real time
+            </div>
+
+            <button onClick={() => setShowHowTo(false)} style={{
+              width:'100%', marginTop:20, padding:'13px 0', borderRadius:8, border:'none',
+              background:'linear-gradient(135deg,#7c3aed,#a855f7)',
+              color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:'inherit',
+            }}>
+              Let's play! 🎮
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
