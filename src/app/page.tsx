@@ -20,7 +20,7 @@ const ENTRY_FEE_LAMP = ENTRY_FEE_SOL * LAMPORTS_PER_SOL;
 const ROUND_SECS     = 120;
 
 type Color = 'green' | 'yellow' | 'gray' | 'empty';
-interface Round { id: string; status: string; prize_pool: number; entry_fee: number; end_time: string; winner_wallet: string | null; }
+interface Round { id: string; status: string; prize_pool: number; entry_fee: number; end_time: string; winner_wallet: string | null; revealed_word?: string | null; }
 interface Guess  { id: string; wallet_address: string; word_attempt: string; result_colors: Color[]; created_at: string; }
 
 const edgeFn = (n: string) => `${SUPABASE_URL}/functions/v1/${n}`;
@@ -130,7 +130,8 @@ const AppContent = () => {
   const [winner,     setWinner]     = useState<string|null>(null);
   const [payoutSecs, setPayoutSecs] = useState(0);
   const [shake,      setShake]      = useState(false);
-  const [nextRoundIn, setNextRoundIn] = useState(0); // seconds until new round starts
+  const [nextRoundIn,  setNextRoundIn]  = useState(0);
+  const [revealedWord, setRevealedWord] = useState<string|null>(null);
 
   const timerRef  = useRef<any>(null);
   const payoutRef = useRef<any>(null);
@@ -169,14 +170,16 @@ const AppContent = () => {
       if (secs === 0) {
         clearInterval(timerRef.current);
         // End round on server
-        await fetch(edgeFn('end-round'), { method:'POST', headers:apiH(), body:JSON.stringify({ round_id: round.id }) });
+        const erRes  = await fetch(edgeFn('end-round'), { method:'POST', headers:apiH(), body:JSON.stringify({ round_id: round.id }) });
+        const erData = await erRes.json();
+        if (erData.revealed_word) setRevealedWord(erData.revealed_word);
         // Show "next round" countdown for 10 seconds
         setNextRoundIn(10);
         const cd = setInterval(() => {
           setNextRoundIn(p => {
             if (p <= 1) {
               clearInterval(cd);
-              setInput(''); setWinner(null); setStatus(''); setMyCount(0); setHasPending(false); setNextRoundIn(0);
+              setInput(''); setWinner(null); setStatus(''); setMyCount(0); setHasPending(false); setNextRoundIn(0); setRevealedWord(null);
               loadRound();
               return 0;
             }
@@ -357,6 +360,17 @@ const AppContent = () => {
               ? <><b style={{color:'#a78bfa'}}>{short(winner)}</b> guessed the word!</>
               : 'No one guessed the word this round.'
             }
+            {revealedWord && (
+              <div style={{marginTop:12}}>
+                <div style={{fontSize:12,color:'#52525b',letterSpacing:1,textTransform:'uppercase',marginBottom:6}}>The word was</div>
+                <div style={{display:'flex',gap:5,justifyContent:'center'}}>
+                  {revealedWord.toUpperCase().split('').map((l,i)=>(
+                    <div key={i} style={{width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',
+                      background:'#538d4e',borderRadius:4,fontSize:20,fontWeight:700,color:'#fff'}}>{l}</div>
+                  ))}
+                </div>
+              </div>
+            )}
             {!winner && round && round.prize_pool > 0 &&
               <div style={{color:'#fbbf24', marginTop:4}}>Prize pool rolls over to next round!</div>
             }
