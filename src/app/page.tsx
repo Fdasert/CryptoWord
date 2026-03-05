@@ -6,808 +6,412 @@ import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import {
-  Connection,
-  Transaction,
-  SystemProgram,
-  PublicKey,
-  LAMPORTS_PER_SOL,
+  Connection, Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 import { supabase } from '@/lib/supabase';
-import NextDynamic from 'next/dynamic';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 export const dynamic = 'force-dynamic';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-const GAME_WALLET    = '6ei4xUpeKjKs3uHVkmbxcGvhczWrW8QJ2zTf9a4qUHfe';
-const HELIUS_RPC     = 'https://mainnet.helius-rpc.com/?api-key=676b709c-1c3e-4fba-a47d-5cd3f2e78283';
-const SUPABASE_URL   = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const WORD_LENGTH    = 7;
-const MAX_GUESSES    = 6;
-const ENTRY_FEE_SOL  = 0.01;
+const GAME_WALLET   = '6ei4xUpeKjKs3uHVkmbxcGvhczWrW8QJ2zTf9a4qUHfe';
+const HELIUS_RPC    = 'https://mainnet.helius-rpc.com/?api-key=676b709c-1c3e-4fba-a47d-5cd3f2e78283';
+const SUPABASE_URL  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const WORD_LENGTH   = 7;
+const ENTRY_FEE_SOL = 0.01;
 const ENTRY_FEE_LAMP = ENTRY_FEE_SOL * LAMPORTS_PER_SOL;
 
 type Color = 'green' | 'yellow' | 'gray' | 'empty';
-type GamePhase =
-  | 'idle'          // нет активного раунда
-  | 'connecting'    // идёт init
-  | 'ready'         // раунд активен, кошелёк не подключён
-  | 'paying'        // идёт транзакция
-  | 'playing'       // оплачено, вводим слова
-  | 'won'           // победил
-  | 'lost'          // 6 попыток исчерпано
-  | 'round_over'    // раунд закончился по таймеру
-  | 'waiting_payout'; // ждём выплаты
 
 interface Round {
-  id: string;
-  status: string;
-  prize_pool: number;
-  entry_fee: number;
-  end_time: string;
-  winner_wallet: string | null;
+  id: string; status: string; prize_pool: number;
+  entry_fee: number; end_time: string; winner_wallet: string | null;
 }
-
 interface Guess {
-  id: string;
-  wallet_address: string;
-  word_attempt: string;
-  result_colors: Color[];
+  id: string; wallet_address: string; word_attempt: string;
+  result_colors: Color[]; created_at: string;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function edgeFn(name: string) {
-  return `${SUPABASE_URL}/functions/v1/${name}`;
+function edgeFn(n: string) { return `${SUPABASE_URL}/functions/v1/${n}`; }
+function apiHeaders() {
+  return { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` };
+}
+function shortWallet(w: string) { return w.slice(0,4) + '..' + w.slice(-4); }
+
+function Tile({ letter, color }: { letter: string; color: Color }) {
+  const bg = color==='green'?'#538d4e':color==='yellow'?'#b59f3b':color==='gray'?'#3a3a3c':'#1a1a1b';
+  const border = color === 'empty' ? '2px solid #3a3a3c' : '2px solid transparent';
+  return (
+    <div style={{
+      width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',
+      background:bg,border,borderRadius:4,fontSize:20,fontWeight:700,color:'#fff',
+      textTransform:'uppercase',transition:'background 0.3s',
+    }}>{letter}</div>
+  );
 }
 
-function serviceHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    'apikey': SUPABASE_ANON,
-    'Authorization': `Bearer ${SUPABASE_ANON}`,
-  };
+function GuessRow({ guess, isMe }: { guess: Guess; isMe: boolean }) {
+  const letters = guess.word_attempt.toUpperCase().split('');
+  const isWin = guess.result_colors.every(c => c === 'green');
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderRadius:6,
+      background: isWin ? 'rgba(83,141,78,0.1)' : 'transparent',
+    }}>
+      <span style={{
+        fontSize:11,color:isMe?'#a78bfa':'#6b7280',fontFamily:'monospace',
+        minWidth:76,textAlign:'right',fontWeight:isMe?700:400,
+      }}>
+        {isWin ? '🏆' : ''}{isMe ? 'YOU' : shortWallet(guess.wallet_address)}
+      </span>
+      <div style={{display:'flex',gap:4}}>
+        {letters.map((l,i) => <Tile key={i} letter={l} color={guess.result_colors[i]??'gray'} />)}
+      </div>
+    </div>
+  );
 }
 
-// ─── Main App ─────────────────────────────────────────────────────────────────
+function InputRow({ value }: { value: string }) {
+  const letters = value.toUpperCase().split('');
+  return (
+    <div style={{display:'flex',gap:4}}>
+      {Array.from({length:WORD_LENGTH}).map((_,i)=><Tile key={i} letter={letters[i]??''} color='empty'/>)}
+    </div>
+  );
+}
+
+const ROWS = [['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Z','X','C','V','B','N','M','⌫']];
+function Keyboard({ lc, onKey }: { lc: Record<string,Color>; onKey:(k:string)=>void }) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'center'}}>
+      {ROWS.map((row,ri) => (
+        <div key={ri} style={{display:'flex',gap:5}}>
+          {row.map(k => {
+            const c=lc[k];
+            const bg=c==='green'?'#538d4e':c==='yellow'?'#b59f3b':c==='gray'?'#3a3a3c':'#818384';
+            const wide = k==='ENTER'||k==='⌫';
+            return (
+              <button key={k} onClick={()=>onKey(k)} style={{
+                width:wide?60:36,height:54,background:bg,border:'none',borderRadius:4,
+                color:'#fff',fontWeight:700,fontSize:wide?11:14,cursor:'pointer',
+              }}>{k}</button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const AppContent = () => {
   const { publicKey, sendTransaction } = useWallet();
   const connection = useMemo(() => new Connection(HELIUS_RPC, 'confirmed'), []);
 
-  // ── State ──
-  const [round, setRound] = useState<Round | null>(null);
-  const [allGuesses, setAllGuesses] = useState<Guess[]>([]);   // все угадывания раунда (все игроки)
-  const [myGuesses, setMyGuesses]   = useState<Guess[]>([]);   // только мои
-  const [currentInput, setCurrentInput] = useState('');
-  const [phase, setPhase] = useState<GamePhase>('connecting');
-  const [statusMsg, setStatusMsg] = useState('');
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [shake, setShake] = useState(false);
-  const [winnerWallet, setWinnerWallet] = useState<string | null>(null);
-  const [payoutCountdown, setPayoutCountdown] = useState(300); // 5 мин в секундах
-  const [hasPaid, setHasPaid] = useState(false);
-  const [flipRow, setFlipRow] = useState<number | null>(null);
+  const [round, setRound]           = useState<Round|null>(null);
+  const [allGuesses, setAllGuesses] = useState<Guess[]>([]);
+  const [input, setInput]           = useState('');
+  const [timeLeft, setTimeLeft]     = useState(0);
+  const [status, setStatus]         = useState('');
+  const [busy, setBusy]             = useState(false);
+  const [hasGuessed, setHasGuessed] = useState(false);
+  const [winner, setWinner]         = useState<string|null>(null);
+  const [payoutSecs, setPayoutSecs] = useState(0);
+  const [shake, setShake]           = useState(false);
 
-  const roundRef    = useRef<Round | null>(null);
-  const phaseRef    = useRef<GamePhase>('connecting');
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const payoutTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef  = useRef<any>(null);
+  const payoutRef = useRef<any>(null);
+  const feedRef   = useRef<HTMLDivElement>(null);
 
-  roundRef.current = round;
-  phaseRef.current = phase;
-
-  // ── Load round ──
   const loadRound = useCallback(async () => {
-    try {
-      const { data } = await supabase
-        .from('global_rounds')
-        .select('id, status, prize_pool, entry_fee, end_time, winner_wallet')
-        .eq('status', 'active')
-        .maybeSingle();
+    const { data } = await supabase.from('active_round').select('*').maybeSingle();
+    setRound(data ?? null);
+    if (!data) { setAllGuesses([]); return; }
 
-      if (!data) {
-        setPhase('idle');
-        setRound(null);
-        return;
-      }
+    const { data: guesses } = await supabase
+      .from('guesses').select('*').eq('round_id', data.id).order('created_at',{ascending:true});
+    setAllGuesses((guesses ?? []) as Guess[]);
 
-      setRound(data as Round);
-
-      const secs = Math.max(0, Math.floor((new Date(data.end_time).getTime() - Date.now()) / 1000));
-      setTimeLeft(secs);
-
-      if (data.winner_wallet) {
-        setWinnerWallet(data.winner_wallet);
-        setPhase('waiting_payout');
-        startPayoutCountdown();
-        return;
-      }
-
-      setPhase(publicKey ? 'paying' : 'ready'); // will refine below
-    } catch (e) {
-      console.error('loadRound:', e);
+    if (publicKey) {
+      const mine = (guesses ?? []).find(g => g.wallet_address === publicKey.toString());
+      setHasGuessed(!!mine);
     }
+    if (data.winner_wallet) setWinner(data.winner_wallet);
+    else setWinner(null);
   }, [publicKey]);
 
-  // ── Load my guesses for current round ──
-  const loadMyGuesses = useCallback(async (roundId: string, wallet: string) => {
-    const { data } = await supabase
-      .from('guesses')
-      .select('*')
-      .eq('round_id', roundId)
-      .eq('wallet_address', wallet)
-      .order('created_at', { ascending: true });
-    if (data) setMyGuesses(data as Guess[]);
-  }, []);
+  useEffect(() => { loadRound(); }, [loadRound]);
 
-  // ── Check if already paid ──
-  const checkPaid = useCallback(async (roundId: string, wallet: string): Promise<boolean> => {
-    const { data } = await supabase
-      .from('transactions')
-      .select('id')
-      .eq('round_id', roundId)
-      .eq('wallet_address', wallet)
-      .eq('verified', true)
-      .maybeSingle();
-    return !!data;
-  }, []);
-
-  // ── Init ──
+  // Timer
   useEffect(() => {
-    loadRound();
-  }, [loadRound]);
-
-  // ── When wallet connects or round loads — update phase ──
-  useEffect(() => {
-    if (!round || round.status !== 'active') return;
-    if (round.winner_wallet) return;
-
-    (async () => {
-      if (!publicKey) {
-        setPhase('ready');
-        return;
-      }
-
-      const wallet = publicKey.toString();
-      const [paid, guesses] = await Promise.all([
-        checkPaid(round.id, wallet),
-        supabase.from('guesses').select('*').eq('round_id', round.id).eq('wallet_address', wallet).order('created_at', { ascending: true }),
-      ]);
-
-      setMyGuesses((guesses.data ?? []) as Guess[]);
-      setHasPaid(paid);
-
-      if (!paid) {
-        setPhase('paying');
-      } else if ((guesses.data?.length ?? 0) >= MAX_GUESSES) {
-        setPhase('lost');
-      } else {
-        setPhase('playing');
-      }
-    })();
-  }, [round?.id, publicKey]);
-
-  // ── Round timer ──
-  useEffect(() => {
-    if (!round || round.status !== 'active' || round.winner_wallet) return;
-
     if (timerRef.current) clearInterval(timerRef.current);
-
+    if (!round || round.status !== 'active' || round.winner_wallet) return;
     timerRef.current = setInterval(async () => {
       const secs = Math.max(0, Math.floor((new Date(round.end_time).getTime() - Date.now()) / 1000));
       setTimeLeft(secs);
-
       if (secs === 0) {
-        clearInterval(timerRef.current!);
-        // Вызываем end-round
-        try {
-          const res = await fetch(edgeFn('end-round'), {
-            method: 'POST',
-            headers: serviceHeaders(),
-            body: JSON.stringify({ round_id: round.id }),
-          });
-          const data = await res.json();
-          if (data.new_round) {
-            setRound(data.new_round);
-            setAllGuesses([]);
-            setMyGuesses([]);
-            setCurrentInput('');
-            setHasPaid(false);
-            setPhase(publicKey ? 'paying' : 'ready');
-            setTimeLeft(60);
-            setStatusMsg('⏱ Round expired! New round started. Prize rolled over.');
-          } else {
-            setPhase('round_over');
-          }
-        } catch (e) {
-          setPhase('round_over');
-        }
+        clearInterval(timerRef.current);
+        await fetch(edgeFn('end-round'), { method:'POST', headers:apiHeaders(), body:JSON.stringify({round_id:round.id}) });
+        setTimeout(() => { setHasGuessed(false); setInput(''); setWinner(null); setStatus(''); loadRound(); }, 2000);
       }
     }, 1000);
-
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => clearInterval(timerRef.current);
   }, [round?.id, round?.end_time]);
 
-  // ── All guesses realtime subscription ──
+  // Realtime guesses
   useEffect(() => {
     if (!round) return;
-
-    // load all current guesses
-    (async () => {
-      const { data } = await supabase
-        .from('guesses')
-        .select('*')
-        .eq('round_id', round.id)
-        .order('created_at', { ascending: true });
-      if (data) setAllGuesses(data as Guess[]);
-    })();
-
-    const channel = supabase
-      .channel(`guesses:${round.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'guesses',
-        filter: `round_id=eq.${round.id}`,
-      }, (payload) => {
-        const g = payload.new as Guess;
-        setAllGuesses(prev => [...prev, g]);
-        if (publicKey && g.wallet_address === publicKey.toString()) {
-          setMyGuesses(prev => {
-            const updated = [...prev, g];
-            setFlipRow(updated.length - 1);
-            setTimeout(() => setFlipRow(null), 600);
-            return updated;
-          });
-        }
-      })
+    const ch = supabase.channel(`g:${round.id}`)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'guesses',filter:`round_id=eq.${round.id}`},
+        payload => {
+          const g = payload.new as Guess;
+          setAllGuesses(prev => prev.find(x=>x.id===g.id) ? prev : [...prev, g]);
+        })
       .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [round?.id]);
 
-    // Watch for winner
-    const roundChannel = supabase
-      .channel(`round:${round.id}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'global_rounds',
-        filter: `id=eq.${round.id}`,
-      }, (payload) => {
-        const updated = payload.new as Round;
-        if (updated.winner_wallet) {
-          setWinnerWallet(updated.winner_wallet);
-          if (publicKey && updated.winner_wallet === publicKey.toString()) {
-            setPhase('won');
-            startPayoutCountdown();
-          } else {
-            setPhase('waiting_payout');
-            startPayoutCountdown();
+  // Realtime winner
+  useEffect(() => {
+    if (!round) return;
+    const ch = supabase.channel(`rw:${round.id}`)
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'global_rounds',filter:`id=eq.${round.id}`},
+        payload => {
+          const u = payload.new as Round;
+          setRound(u);
+          if (u.winner_wallet) {
+            setWinner(u.winner_wallet);
+            if (payoutRef.current) clearInterval(payoutRef.current);
+            setPayoutSecs(300);
+            payoutRef.current = setInterval(() => {
+              setPayoutSecs(p => {
+                if (p <= 1) {
+                  clearInterval(payoutRef.current);
+                  setTimeout(() => { setHasGuessed(false); setInput(''); setWinner(null); setStatus(''); loadRound(); }, 1000);
+                  return 0;
+                }
+                return p - 1;
+              });
+            }, 1000);
           }
-        }
-      })
+        })
       .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [round?.id]);
 
-    return () => {
-      supabase.removeChannel(channel);
-      supabase.removeChannel(roundChannel);
-    };
-  }, [round?.id, publicKey]);
+  // Auto-scroll feed
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [allGuesses]);
 
-  const startPayoutCountdown = () => {
-    if (payoutTimer.current) clearInterval(payoutTimer.current);
-    setPayoutCountdown(300);
-    payoutTimer.current = setInterval(() => {
-      setPayoutCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(payoutTimer.current!);
-          // Новый раунд стартует — перезагружаем
-          setTimeout(() => {
-            setPhase('connecting');
-            loadRound();
-          }, 2000);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
+  // Keyboard handler
+  const handleKey = useCallback((k: string) => {
+    if (busy || hasGuessed || !round || winner || round.status !== 'active') return;
+    if (k === '⌫' || k === 'Backspace') {
+      setInput(p => p.slice(0,-1));
+    } else if (k === 'ENTER' || k === 'Enter') {
+      if (input.length === WORD_LENGTH) handlePayAndGuess();
+      else { setShake(true); setTimeout(()=>setShake(false),500); }
+    } else if (/^[A-Za-z]$/.test(k) && input.length < WORD_LENGTH) {
+      setInput(p => p + k.toUpperCase());
+    }
+  }, [busy, hasGuessed, input, round, winner]);
 
-  // ── Payment ──
-  const handlePay = async () => {
-    if (!publicKey || !round) return;
-    setPhase('paying');
-    setStatusMsg('Confirm in your wallet...');
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => handleKey(e.key);
+    window.addEventListener('keydown', fn);
+    return () => window.removeEventListener('keydown', fn);
+  }, [handleKey]);
 
+  // Pay & Guess
+  const handlePayAndGuess = async () => {
+    if (!publicKey || !round || input.length !== WORD_LENGTH || busy) return;
+    setBusy(true);
+    setStatus('Подтверди транзакцию в кошельке...');
     try {
       const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: publicKey,
-          toPubkey: new PublicKey(GAME_WALLET),
-          lamports: ENTRY_FEE_LAMP,
-        })
+        SystemProgram.transfer({ fromPubkey:publicKey, toPubkey:new PublicKey(GAME_WALLET), lamports:ENTRY_FEE_LAMP })
       );
-
       const sig = await sendTransaction(tx, connection);
-      setStatusMsg('Verifying on Solana...');
-      // Небольшая пауза чтобы транзакция успела попасть в RPC
+      setStatus('Ждём подтверждения Solana...');
       await new Promise(r => setTimeout(r, 4000));
 
-      // Верифицируем через Edge Function
-      const res = await fetch(edgeFn('verify-payment'), {
-        method: 'POST',
-        headers: serviceHeaders(),
-        body: JSON.stringify({
-          round_id: round.id,
-          wallet_address: publicKey.toString(),
-          tx_signature: sig,
-        }),
+      setStatus('Верификация оплаты...');
+      const vRes = await fetch(edgeFn('verify-payment'), {
+        method:'POST', headers:apiHeaders(),
+        body: JSON.stringify({ round_id:round.id, wallet_address:publicKey.toString(), tx_signature:sig }),
       });
+      const vData = await vRes.json();
+      if (!vData.success) { setStatus(`⚠ ${vData.error}`); setBusy(false); return; }
 
-      const result = await res.json();
-      if (!result.success) {
-        setStatusMsg(`⚠ ${result.error}`);
-        setPhase('paying');
-        return;
-      }
+      setStatus('Проверяем слово...');
+      const gRes = await fetch(edgeFn('check-guess'), {
+        method:'POST', headers:apiHeaders(),
+        body: JSON.stringify({ round_id:round.id, wallet_address:publicKey.toString(), word_attempt:input }),
+      });
+      const gData = await gRes.json();
+      if (!gData.success) { setStatus(`⚠ ${gData.error}`); setBusy(false); return; }
 
-      // Обновляем prize_pool локально
-      setRound(prev => prev ? { ...prev, prize_pool: prev.prize_pool + ENTRY_FEE_SOL } : prev);
-      setHasPaid(true);
-      setPhase('playing');
-      setStatusMsg('Paid! Type your guess and press Enter.');
-    } catch (e: any) {
-      setStatusMsg(e?.message?.includes('rejected') ? 'Transaction cancelled.' : `Error: ${e?.message ?? 'Unknown'}`);
-      setPhase('paying');
+      setHasGuessed(true);
+      setInput('');
+      setStatus(gData.is_winner ? '🏆 Ты угадал! Приз придёт через 5 минут.' : 'Попытка принята! Жди следующего раунда.');
+    } catch(e: any) {
+      const msg = e?.message ?? '';
+      setStatus(msg.includes('rejected') ? 'Транзакция отменена.' : `Ошибка: ${msg}`);
     }
+    setBusy(false);
   };
 
-  // ── Submit guess ──
-  const handleSubmit = async () => {
-    if (!publicKey || !round || currentInput.length !== WORD_LENGTH) return;
-    if (phase !== 'playing') return;
-
-    setStatusMsg('Checking...');
-
-    try {
-      const res = await fetch(edgeFn('check-guess'), {
-        method: 'POST',
-        headers: serviceHeaders(),
-        body: JSON.stringify({
-          round_id: round.id,
-          wallet_address: publicKey.toString(),
-          word_attempt: currentInput,
-        }),
-      });
-
-      const result = await res.json();
-
-      if (!result.success) {
-        if (result.round_ended) {
-          setPhase('round_over');
-          setStatusMsg('Round expired!');
-        } else {
-          setShake(true);
-          setTimeout(() => setShake(false), 500);
-          setStatusMsg(result.error ?? 'Error');
-        }
-        return;
-      }
-
-      setCurrentInput('');
-
-      if (result.is_winner) {
-        setPhase('won');
-        setStatusMsg(`🏆 You got it! ${result.prize_pool} SOL incoming in 5 min.`);
-        startPayoutCountdown();
-      } else if (result.attempts_remaining === 0) {
-        setPhase('lost');
-        setStatusMsg('No attempts left. Better luck next round!');
-      } else {
-        setStatusMsg(`${result.attempts_remaining} attempt${result.attempts_remaining !== 1 ? 's' : ''} left`);
-      }
-    } catch (e: any) {
-      setStatusMsg(`Error: ${e?.message ?? 'Unknown'}`);
-    }
-  };
-
-  // ── Keyboard input ──
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (phase !== 'playing') return;
-      if (e.key === 'Enter') {
-        if (currentInput.length === WORD_LENGTH) handleSubmit();
-        else { setShake(true); setTimeout(() => setShake(false), 500); }
-      } else if (e.key === 'Backspace') {
-        setCurrentInput(prev => prev.slice(0, -1));
-      } else if (/^[a-zA-Z]$/.test(e.key) && currentInput.length < WORD_LENGTH) {
-        setCurrentInput(prev => (prev + e.key).toUpperCase());
-      }
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [phase, currentInput, handleSubmit]);
-
-  // ── On-screen keyboard ──
-  const KEYBOARD_ROWS = [
-    ['Q','W','E','R','T','Y','U','I','O','P'],
-    ['A','S','D','F','G','H','J','K','L'],
-    ['ENTER','Z','X','C','V','B','N','M','⌫'],
-  ];
-
-  const keyColors = useMemo(() => {
-    const map: Record<string, Color> = {};
-    for (const g of myGuesses) {
-      g.word_attempt.split('').forEach((ch, i) => {
-        const cur = map[ch];
-        const next = g.result_colors[i];
-        if (cur === 'green') return;
-        if (next === 'green') { map[ch] = 'green'; return; }
-        if (cur === 'yellow') return;
-        if (next === 'yellow') { map[ch] = 'yellow'; return; }
-        map[ch] = 'gray';
+  // Letter colors from my guesses
+  const letterColors = useMemo<Record<string,Color>>(() => {
+    if (!publicKey) return {};
+    const mine = allGuesses.filter(g => g.wallet_address === publicKey.toString());
+    const map: Record<string,Color> = {};
+    for (const g of mine) {
+      g.word_attempt.toUpperCase().split('').forEach((l,i) => {
+        const c = g.result_colors[i];
+        const prev = map[l];
+        if (c==='green' || !prev || (prev==='gray' && c==='yellow')) map[l] = c;
       });
     }
     return map;
-  }, [myGuesses]);
+  }, [allGuesses, publicKey]);
 
-  const onKeyPress = (key: string) => {
-    if (phase !== 'playing') return;
-    if (key === 'ENTER') { if (currentInput.length === WORD_LENGTH) handleSubmit(); }
-    else if (key === '⌫') setCurrentInput(prev => prev.slice(0, -1));
-    else if (currentInput.length < WORD_LENGTH) setCurrentInput(prev => prev + key);
-  };
+  const timerColor = timeLeft<=15?'#ef4444':timeLeft<=30?'#f59e0b':'#22d3ee';
+  const timerPct   = round ? timeLeft / 90 : 0;
 
-  // ── Timer color ──
-  const timerColor = timeLeft > 20 ? '#22d3ee' : timeLeft > 10 ? '#f59e0b' : '#ef4444';
-  const timerPct = (timeLeft / 60) * 100;
-
-  // ── Cell component ──
-  const Cell = ({ char, color, revealed }: { char: string; color: Color; revealed: boolean }) => {
-    const bg: Record<Color, string> = {
-      green: '#16a34a',
-      yellow: '#ca8a04',
-      gray: '#374151',
-      empty: 'transparent',
-    };
-    const border: Record<Color, string> = {
-      green: '#16a34a',
-      yellow: '#ca8a04',
-      gray: '#374151',
-      empty: char ? '#22d3ee' : '#1f2937',
-    };
-    return (
-      <div style={{
-        width: 44, height: 44,
-        background: revealed ? bg[color] : bg['empty'],
-        border: `2px solid ${border[color]}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18, fontWeight: 900, color: '#fff',
-        fontFamily: "'Space Grotesk', monospace",
-        transition: 'background 0.2s',
-        boxShadow: revealed && color === 'green' ? '0 0 12px rgba(22,163,74,0.5)' : 'none',
-      }}>
-        {char}
-      </div>
-    );
-  };
-
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#09090b',
-      color: '#fff',
-      fontFamily: "'Space Grotesk', 'Courier New', monospace",
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '0 16px 40px',
-    }}>
+    <div style={{ minHeight:'100vh', background:'#09090b', color:'#fff', fontFamily:"'Space Grotesk',sans-serif", display:'flex', flexDirection:'column' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #18181b; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+      `}</style>
 
-      {/* ── Header ── */}
-      <div style={{
-        width: '100%', maxWidth: 520,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '20px 0 16px',
-        borderBottom: '1px solid #18181b',
-      }}>
+      {/* Header */}
+      <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 24px', borderBottom:'1px solid #27272a' }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '0.08em', color: '#22d3ee' }}>
-            SOL_WORD
-          </div>
-          <div style={{ fontSize: 10, color: '#52525b', letterSpacing: '0.15em', marginTop: 2 }}>
-            CRYPTO WORDLE · 7 LETTERS
-          </div>
+          <span style={{fontSize:24,fontWeight:800,letterSpacing:-1}}>SOL</span>
+          <span style={{fontSize:24,fontWeight:800,color:'#a78bfa',letterSpacing:-1}}>WORD</span>
+          <span style={{fontSize:11,color:'#52525b',marginLeft:8}}>Угадай слово первым</span>
         </div>
-        <div style={{ transform: 'scale(0.88)', transformOrigin: 'right center' }}>
-          <WalletMultiButton />
+        <WalletMultiButton style={{height:38,fontSize:13,background:'#7c3aed'}} />
+      </header>
+
+      {/* Timer bar */}
+      {round && round.status === 'active' && !winner && (
+        <div style={{height:3,background:'#27272a',width:'100%'}}>
+          <div style={{height:'100%',background:timerColor,width:`${timerPct*100}%`,transition:'width 1s linear'}} />
         </div>
+      )}
+
+      {/* Stats */}
+      <div style={{ display:'flex', gap:20, padding:'10px 24px', borderBottom:'1px solid #27272a', background:'#0f0f10', fontSize:13, flexWrap:'wrap', alignItems:'center' }}>
+        <span>💰 <b style={{color:'#fbbf24'}}>{(round?.prize_pool ?? 0).toFixed(4)} SOL</b> prize pool</span>
+        {round && round.status==='active' && !winner && (
+          <span style={{display:'flex',alignItems:'center',gap:6}}>
+            <span style={{width:8,height:8,borderRadius:'50%',background:timerColor,display:'inline-block',animation:'pulse 1s infinite'}}/>
+            <b style={{color:timerColor}}>{timeLeft}s</b>
+          </span>
+        )}
+        {winner && (
+          <span>🏆 <b style={{color:'#a78bfa'}}>{shortWallet(winner)}</b> победил{payoutSecs>0&&` · выплата через ${payoutSecs}s`}</span>
+        )}
+        <span style={{color:'#3f3f46',marginLeft:'auto',fontSize:11,fontFamily:'monospace'}}>
+          {round ? round.id.slice(0,8) : '—'}
+        </span>
       </div>
 
-      {/* ── Prize Pool + Timer ── */}
-      {round && (
-        <div style={{
-          width: '100%', maxWidth: 520,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '14px 0 10px',
-        }}>
-          {/* Prize */}
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: 10, color: '#52525b', letterSpacing: '0.15em', marginBottom: 4 }}>PRIZE POOL</div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: '#fbbf24', lineHeight: 1 }}>
-              {Number(round.prize_pool).toFixed(3)}
-              <span style={{ fontSize: 14, color: '#78716c', marginLeft: 4 }}>SOL</span>
-            </div>
-          </div>
+      {/* Body */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',padding:'20px 16px',gap:18}}>
 
-          {/* Timer */}
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 10, color: '#52525b', letterSpacing: '0.15em', marginBottom: 4 }}>TIME LEFT</div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: timerColor, lineHeight: 1 }}>
-              {timeLeft}
-              <span style={{ fontSize: 14, color: '#52525b', marginLeft: 4 }}>SEC</span>
-            </div>
-            {/* Timer bar */}
-            <div style={{ width: 100, height: 3, background: '#18181b', borderRadius: 2, marginTop: 6, marginLeft: 'auto' }}>
-              <div style={{ width: `${timerPct}%`, height: '100%', background: timerColor, borderRadius: 2, transition: 'width 1s linear, background 1s' }} />
-            </div>
+        {/* Feed */}
+        <div style={{width:'100%',maxWidth:500}}>
+          <div style={{fontSize:11,color:'#52525b',marginBottom:6,letterSpacing:1,textTransform:'uppercase'}}>
+            🔴 Live attempts — все видят попытки друг друга
+          </div>
+          <div ref={feedRef} style={{
+            background:'#18181b',borderRadius:10,padding:'10px 14px',
+            height:320,overflowY:'auto',border:'1px solid #27272a',
+          }}>
+            {allGuesses.length === 0 ? (
+              <div style={{color:'#3f3f46',textAlign:'center',marginTop:110,fontSize:14}}>
+                Попыток пока нет. Будь первым!
+              </div>
+            ) : (
+              allGuesses.map(g => (
+                <GuessRow key={g.id} guess={g} isMe={publicKey?.toString()===g.wallet_address} />
+              ))
+            )}
           </div>
         </div>
-      )}
 
-      {/* Live players count */}
-      {round && (
-        <div style={{ width: '100%', maxWidth: 520, fontSize: 10, color: '#3f3f46', letterSpacing: '0.1em', paddingBottom: 12 }}>
-          {allGuesses.length} GUESS{allGuesses.length !== 1 ? 'ES' : ''} THIS ROUND ·{' '}
-          {new Set(allGuesses.map(g => g.wallet_address)).size} PLAYER{new Set(allGuesses.map(g => g.wallet_address)).size !== 1 ? 'S' : ''}
-        </div>
-      )}
+        {/* Play area */}
+        {!publicKey ? (
+          <div style={{textAlign:'center',color:'#52525b',fontSize:14,padding:20}}>
+            Подключи кошелёк чтобы играть
+          </div>
+        ) : !round || round.status !== 'active' ? (
+          <div style={{textAlign:'center',color:'#52525b',fontSize:14}}>Ожидание нового раунда...</div>
+        ) : winner ? (
+          <div style={{textAlign:'center',padding:16}}>
+            {winner===publicKey.toString()
+              ? <><div style={{fontSize:36}}>🏆</div><div style={{color:'#fbbf24',fontWeight:700,fontSize:18}}>Ты победил!</div><div style={{color:'#6b7280',fontSize:13,marginTop:4}}>Приз придёт через {payoutSecs}s</div></>
+              : <><div style={{fontSize:28}}>😔</div><div style={{color:'#6b7280',fontSize:14}}>Победил {shortWallet(winner)}<br/>Новый раунд через {payoutSecs}s</div></>
+            }
+          </div>
+        ) : hasGuessed ? (
+          <div style={{textAlign:'center',color:'#6b7280',fontSize:14,padding:16}}>
+            Ты уже сделал попытку.<br/>
+            <span style={{fontSize:12,color:'#3f3f46'}}>Жди следующего раунда через {timeLeft}s</span>
+          </div>
+        ) : (
+          <div style={{width:'100%',maxWidth:500,display:'flex',flexDirection:'column',gap:12,alignItems:'center'}}>
+            {/* Input preview */}
+            <div style={{animation: shake ? 'shake 0.4s' : 'none'}}>
+              <InputRow value={input} />
+            </div>
 
-      {/* ── Guess Grid ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-        {Array.from({ length: MAX_GUESSES }).map((_, rowIdx) => {
-          const guess = myGuesses[rowIdx];
-          const isActive = rowIdx === myGuesses.length && phase === 'playing';
-          const isFlipping = flipRow === rowIdx;
-          return (
-            <div
-              key={rowIdx}
+            {/* Button */}
+            <button
+              onClick={handlePayAndGuess}
+              disabled={busy || input.length !== WORD_LENGTH}
               style={{
-                display: 'flex', gap: 5,
-                opacity: rowIdx > myGuesses.length ? 0.25 : 1,
-                animation: isFlipping ? 'flipIn 0.5s ease' : shake && isActive ? 'shake 0.4s ease' : undefined,
+                width:'100%',padding:'15px 0',borderRadius:8,border:'none',
+                background: busy||input.length!==WORD_LENGTH ? '#27272a' : 'linear-gradient(135deg,#7c3aed,#a855f7)',
+                color: busy||input.length!==WORD_LENGTH ? '#52525b' : '#fff',
+                fontWeight:700,fontSize:16,cursor:busy||input.length!==WORD_LENGTH?'not-allowed':'pointer',
+                transition:'all 0.2s',boxShadow: input.length===WORD_LENGTH&&!busy ? '0 0 20px rgba(124,58,237,0.3)' : 'none',
               }}
             >
-              {Array.from({ length: WORD_LENGTH }).map((_, colIdx) => {
-                if (guess) {
-                  return <Cell key={colIdx} char={guess.word_attempt[colIdx]} color={guess.result_colors[colIdx]} revealed />;
-                }
-                if (isActive) {
-                  const ch = currentInput[colIdx] ?? '';
-                  return <Cell key={colIdx} char={ch} color="empty" revealed={false} />;
-                }
-                return <Cell key={colIdx} char="" color="empty" revealed={false} />;
-              })}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ── Status / Action area ── */}
-      <div style={{ width: '100%', maxWidth: 380, textAlign: 'center', margin: '8px 0 16px' }}>
-
-        {/* Status message */}
-        {statusMsg && (
-          <div style={{ fontSize: 11, color: '#71717a', letterSpacing: '0.12em', marginBottom: 10, textTransform: 'uppercase' }}>
-            {statusMsg}
-          </div>
-        )}
-
-        {/* IDLE */}
-        {phase === 'idle' && (
-          <div style={{ padding: '24px', border: '1px dashed #27272a', borderRadius: 12 }}>
-            <div style={{ fontSize: 13, color: '#52525b', marginBottom: 12 }}>No active round</div>
-            <button onClick={loadRound} style={btnStyle('#22d3ee')}>REFRESH</button>
-          </div>
-        )}
-
-        {/* CONNECTING */}
-        {phase === 'connecting' && (
-          <div style={{ color: '#52525b', fontSize: 12 }}>Loading...</div>
-        )}
-
-        {/* READY (wallet not connected) */}
-        {phase === 'ready' && (
-          <div style={{ padding: '20px', border: '1px dashed #27272a', borderRadius: 12 }}>
-            <div style={{ fontSize: 12, color: '#52525b', marginBottom: 16 }}>CONNECT WALLET TO JOIN</div>
-            <div style={{ display: 'flex', justifyContent: 'center' }}><WalletMultiButton /></div>
-          </div>
-        )}
-
-        {/* PAYING */}
-        {phase === 'paying' && publicKey && !hasPaid && (
-          <div>
-            <div style={{ fontSize: 11, color: '#52525b', marginBottom: 12, letterSpacing: '0.1em' }}>
-              ENTRY FEE: {ENTRY_FEE_SOL} SOL → {GAME_WALLET.slice(0,6)}…{GAME_WALLET.slice(-4)}
-            </div>
-            <button onClick={handlePay} style={btnStyle('#22d3ee')}>
-              PAY {ENTRY_FEE_SOL} SOL & PLAY
+              {busy ? '⏳ Обработка...' : `🔮 PAY 0.01 SOL & GUESS`}
             </button>
-          </div>
-        )}
 
-        {/* PLAYING */}
-        {phase === 'playing' && (
-          <button
-            onClick={handleSubmit}
-            disabled={currentInput.length !== WORD_LENGTH}
-            style={btnStyle(currentInput.length === WORD_LENGTH ? '#22d3ee' : '#27272a', currentInput.length !== WORD_LENGTH)}
-          >
-            SUBMIT GUESS ↵
-          </button>
-        )}
+            {status && <div style={{fontSize:13,color:'#a1a1aa',textAlign:'center'}}>{status}</div>}
 
-        {/* WON */}
-        {phase === 'won' && (
-          <div style={{ padding: 24, background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.3)', borderRadius: 12 }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🏆</div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: '#22c55e', marginBottom: 8 }}>YOU WON!</div>
-            <div style={{ fontSize: 12, color: '#86efac', marginBottom: 16 }}>
-              {Number(round?.prize_pool ?? 0).toFixed(3)} SOL will arrive in your wallet
-            </div>
-            <div style={{ fontSize: 11, color: '#52525b' }}>
-              PAYOUT IN {Math.floor(payoutCountdown / 60)}:{String(payoutCountdown % 60).padStart(2, '0')}
-            </div>
-          </div>
-        )}
+            <Keyboard lc={letterColors} onKey={handleKey} />
 
-        {/* LOST */}
-        {phase === 'lost' && (
-          <div style={{ padding: 20, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12 }}>
-            <div style={{ fontSize: 14, color: '#f87171', marginBottom: 8 }}>OUT OF ATTEMPTS</div>
-            <div style={{ fontSize: 11, color: '#52525b' }}>Wait for the next round to play again</div>
-          </div>
-        )}
-
-        {/* ROUND_OVER */}
-        {phase === 'round_over' && (
-          <div style={{ padding: 20, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: 12 }}>
-            <div style={{ fontSize: 14, color: '#fbbf24', marginBottom: 8 }}>ROUND EXPIRED</div>
-            <div style={{ fontSize: 11, color: '#78716c', marginBottom: 16 }}>Nobody guessed. Prize rolls over to next round.</div>
-            <button onClick={loadRound} style={btnStyle('#fbbf24')}>JOIN NEW ROUND</button>
-          </div>
-        )}
-
-        {/* WAITING_PAYOUT (someone else won) */}
-        {phase === 'waiting_payout' && (
-          <div style={{ padding: 20, background: 'rgba(234,179,8,0.06)', border: '1px solid #27272a', borderRadius: 12 }}>
-            <div style={{ fontSize: 14, color: '#fbbf24', marginBottom: 8 }}>ROUND WON!</div>
-            <div style={{ fontSize: 11, color: '#78716c', marginBottom: 6 }}>
-              Winner: {winnerWallet?.slice(0,6)}…{winnerWallet?.slice(-4)}
-            </div>
-            <div style={{ fontSize: 11, color: '#52525b', marginBottom: 16 }}>
-              New round starts in {Math.floor(payoutCountdown / 60)}:{String(payoutCountdown % 60).padStart(2, '0')}
+            <div style={{fontSize:11,color:'#3f3f46',textAlign:'center',lineHeight:1.6}}>
+              1 попытка = 0.01 SOL · 90 секунд на раунд<br/>
+              Угадавший забирает весь prize pool
             </div>
           </div>
         )}
       </div>
-
-      {/* ── On-screen Keyboard ── */}
-      {(phase === 'playing') && (
-        <div style={{ width: '100%', maxWidth: 480, marginTop: 8 }}>
-          {KEYBOARD_ROWS.map((row, ri) => (
-            <div key={ri} style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 5 }}>
-              {row.map(key => {
-                const color = keyColors[key];
-                const bg = color === 'green' ? '#16a34a'
-                  : color === 'yellow' ? '#ca8a04'
-                  : color === 'gray' ? '#27272a'
-                  : '#3f3f46';
-                const isWide = key === 'ENTER' || key === '⌫';
-                return (
-                  <button
-                    key={key}
-                    onClick={() => onKeyPress(key)}
-                    style={{
-                      width: isWide ? 62 : 36,
-                      height: 46,
-                      background: bg,
-                      border: 'none',
-                      borderRadius: 6,
-                      color: '#fff',
-                      fontSize: isWide ? 10 : 14,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      transition: 'background 0.15s, transform 0.1s',
-                    }}
-                    onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.92)')}
-                    onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
-                  >
-                    {key}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Recent guesses ticker (all players) ── */}
-      {allGuesses.length > 0 && (
-        <div style={{ width: '100%', maxWidth: 520, marginTop: 24, borderTop: '1px solid #18181b', paddingTop: 16 }}>
-          <div style={{ fontSize: 10, color: '#3f3f46', letterSpacing: '0.15em', marginBottom: 10 }}>LIVE GUESSES</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
-            {[...allGuesses].reverse().slice(0, 15).map((g, i) => (
-              <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: i === 0 ? 1 : 0.5 }}>
-                <span style={{ fontSize: 10, color: '#52525b', minWidth: 80, fontFamily: 'monospace' }}>
-                  {g.wallet_address.slice(0, 4)}…{g.wallet_address.slice(-4)}
-                </span>
-                <div style={{ display: 'flex', gap: 2 }}>
-                  {g.word_attempt.split('').map((ch, ci) => (
-                    <div key={ci} style={{
-                      width: 22, height: 22, fontSize: 11, fontWeight: 700,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: g.result_colors[ci] === 'green' ? '#16a34a' : g.result_colors[ci] === 'yellow' ? '#ca8a04' : '#27272a',
-                      color: '#fff', borderRadius: 3,
-                    }}>{ch}</div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── CSS animations ── */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;900&display=swap');
-        @keyframes shake {
-          0%,100% { transform: translateX(0); }
-          20%      { transform: translateX(-6px); }
-          40%      { transform: translateX(6px); }
-          60%      { transform: translateX(-4px); }
-          80%      { transform: translateX(4px); }
-        }
-        @keyframes flipIn {
-          0%   { transform: rotateX(0deg); }
-          50%  { transform: rotateX(-90deg); }
-          100% { transform: rotateX(0deg); }
-        }
-        @keyframes pulse {
-          0%,100% { opacity:1; }
-          50%     { opacity:0.4; }
-        }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #09090b; }
-        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
-        .wallet-adapter-button { font-family: 'Space Grotesk', monospace !important; }
-      `}</style>
     </div>
   );
 };
 
-// ─── Button style helper ──────────────────────────────────────────────────────
-function btnStyle(color: string, disabled = false): React.CSSProperties {
-  return {
-    width: '100%',
-    padding: '14px 0',
-    background: disabled ? '#18181b' : color,
-    color: disabled ? '#3f3f46' : '#000',
-    border: 'none',
-    fontWeight: 900,
-    fontSize: 13,
-    letterSpacing: '0.1em',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    fontFamily: "'Space Grotesk', monospace",
-    transition: 'opacity 0.15s, transform 0.1s',
-    borderRadius: 8,
-  };
-}
-
-// ─── Root wrapper ─────────────────────────────────────────────────────────────
-const GameDynamic = NextDynamic(() => Promise.resolve(AppContent), { ssr: false });
-
-export default function SolWord() {
-  const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
+export default function Page() {
+  const endpoint = useMemo(() => HELIUS_RPC, []);
+  const wallets  = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
   return (
-    <ConnectionProvider endpoint={HELIUS_RPC}>
+    <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
-          <GameDynamic />
+          <AppContent />
         </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
