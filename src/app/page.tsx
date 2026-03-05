@@ -17,7 +17,7 @@ const SUPABASE_ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const WORD_LENGTH    = 7;
 const ENTRY_FEE_SOL  = 0.01;
 const ENTRY_FEE_LAMP = ENTRY_FEE_SOL * LAMPORTS_PER_SOL;
-const ROUND_SECS     = 90;
+const ROUND_SECS     = 120;
 
 type Color = 'green' | 'yellow' | 'gray' | 'empty';
 interface Round { id: string; status: string; prize_pool: number; entry_fee: number; end_time: string; winner_wallet: string | null; }
