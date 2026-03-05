@@ -130,6 +130,7 @@ const AppContent = () => {
   const [winner,     setWinner]     = useState<string|null>(null);
   const [payoutSecs, setPayoutSecs] = useState(0);
   const [shake,      setShake]      = useState(false);
+  const [nextRoundIn, setNextRoundIn] = useState(0); // seconds until new round starts
 
   const timerRef  = useRef<any>(null);
   const payoutRef = useRef<any>(null);
@@ -167,8 +168,21 @@ const AppContent = () => {
       setTimeLeft(secs);
       if (secs === 0) {
         clearInterval(timerRef.current);
+        // End round on server
         await fetch(edgeFn('end-round'), { method:'POST', headers:apiH(), body:JSON.stringify({ round_id: round.id }) });
-        setTimeout(() => { setInput(''); setWinner(null); setStatus(''); setMyCount(0); setHasPending(false); loadRound(); }, 2000);
+        // Show "next round" countdown for 10 seconds
+        setNextRoundIn(10);
+        const cd = setInterval(() => {
+          setNextRoundIn(p => {
+            if (p <= 1) {
+              clearInterval(cd);
+              setInput(''); setWinner(null); setStatus(''); setMyCount(0); setHasPending(false); setNextRoundIn(0);
+              loadRound();
+              return 0;
+            }
+            return p - 1;
+          });
+        }, 1000);
       }
     }, 1000);
     return () => clearInterval(timerRef.current);
@@ -303,7 +317,7 @@ const AppContent = () => {
     return map;
   }, [allGuesses, publicKey]);
 
-  const isActive   = round?.status === 'active' && !winner;
+  const isActive   = round?.status === 'active' && !winner && nextRoundIn === 0;
   const timerColor = timeLeft <= 15 ? '#ef4444' : timeLeft <= 30 ? '#f59e0b' : '#22d3ee';
 
   // ── Render ──
@@ -327,6 +341,41 @@ const AppContent = () => {
         </div>
         <WalletMultiButton style={{ height:38, fontSize:13, background:'#7c3aed' }}/>
       </header>
+
+      {/* Round Over overlay */}
+      {nextRoundIn > 0 && (
+        <div style={{
+          position:'fixed', inset:0, zIndex:50,
+          background:'rgba(9,9,11,0.92)', backdropFilter:'blur(8px)',
+          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+          gap:20, animation:'fadeIn 0.4s',
+        }}>
+          <div style={{ fontSize:64 }}>⏱</div>
+          <div style={{ fontSize:28, fontWeight:800, color:'#fff' }}>Round Over</div>
+          <div style={{ fontSize:15, color:'#71717a', textAlign:'center' }}>
+            {winner
+              ? <><b style={{color:'#a78bfa'}}>{short(winner)}</b> guessed the word!</>
+              : 'No one guessed the word this round.'
+            }
+            {!winner && round && round.prize_pool > 0 &&
+              <div style={{color:'#fbbf24', marginTop:4}}>Prize pool rolls over to next round!</div>
+            }
+          </div>
+          <div style={{
+            width:120, height:120, borderRadius:'50%',
+            border:`6px solid #27272a`, display:'flex', flexDirection:'column',
+            alignItems:'center', justifyContent:'center', position:'relative',
+          }}>
+            <svg width={120} height={120} style={{position:'absolute',top:0,left:0,transform:'rotate(-90deg)'}}>
+              <circle cx={60} cy={60} r={54} fill="none" stroke="#7c3aed" strokeWidth={6}
+                strokeDasharray={`${(nextRoundIn/10)*2*Math.PI*54} ${2*Math.PI*54}`}
+                strokeLinecap="round" style={{transition:'stroke-dasharray 1s linear'}}/>
+            </svg>
+            <div style={{fontSize:36,fontWeight:800,color:'#a78bfa'}}>{nextRoundIn}</div>
+            <div style={{fontSize:11,color:'#52525b',letterSpacing:1}}>NEW ROUND</div>
+          </div>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div style={{ height:3, background:'#18181b' }}>
