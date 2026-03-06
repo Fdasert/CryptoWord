@@ -135,6 +135,7 @@ const AppContent = () => {
 
   const timerRef  = useRef<any>(null);
   const payoutRef = useRef<any>(null);
+  const feedRef   = useRef<HTMLDivElement>(null);
 
   // ── Load round ──
   const loadRound = useCallback(async () => {
@@ -143,7 +144,7 @@ const AppContent = () => {
     if (!data) { setAllGuesses([]); setMyCount(0); setHasPending(false); return; }
 
     const { data: guesses } = await supabase
-      .from('guesses').select('*').eq('round_id', data.id).order('created_at', { ascending: false });
+      .from('guesses').select('*').eq('round_id', data.id).order('created_at', { ascending: true });
     setAllGuesses((guesses ?? []) as Guess[]);
     setWinner(data.winner_wallet ?? null);
 
@@ -197,14 +198,14 @@ const AppContent = () => {
     return () => clearInterval(timerRef.current);
   }, [round?.id, round?.end_time]);
 
-  // ── Realtime: new guess → prepend to top ──
+  // ── Realtime: new guess → append to bottom (auto-scroll handles newest) ──
   useEffect(() => {
     if (!round) return;
     const ch = supabase.channel(`g:${round.id}`)
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'guesses', filter:`round_id=eq.${round.id}` },
         payload => {
           const g = payload.new as Guess;
-          setAllGuesses(prev => prev.find(x => x.id === g.id) ? prev : [g, ...prev]);
+          setAllGuesses(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g]);
           if (publicKey && g.wallet_address === publicKey.toString()) {
             setMyCount(p => p + 1);
             setHasPending(false);
@@ -260,6 +261,13 @@ const AppContent = () => {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, []);
+
+  // ── Auto-scroll feed to latest guess ──
+  useEffect(() => {
+    if (feedRef.current) {
+      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    }
+  }, [allGuesses.length]);
 
   // ── Keyboard ──
   const handleKey = useCallback((k: string) => {
@@ -472,6 +480,8 @@ const AppContent = () => {
         <span>💰 <b style={{ color:'#fbbf24' }}>{(round?.prize_pool ?? 0).toFixed(4)} SOL</b> prize pool</span>
         <span style={{ color:'#3f3f46' }}>·</span>
         <span style={{ color:'#71717a' }}>0.01 SOL / attempt · unlimited tries</span>
+        <span style={{ color:'#3f3f46' }}>·</span>
+        <span style={{ color:'#52525b', fontSize:12 }}>5% service fee on winnings</span>
         {winner && (
           <span style={{ marginLeft:'auto', animation:'fadeIn 0.4s' }}>
             🏆 <b style={{ color:'#a78bfa' }}>{short(winner)}</b> won!
@@ -483,14 +493,14 @@ const AppContent = () => {
       {/* Body: two-column */}
       <div className='sol-body' style={{ flex:1, display:'flex', gap:0, justifyContent:'center', padding:'20px 16px', flexWrap:'wrap' }}>
 
-        {/* LEFT: Live feed — newest on top */}
+        {/* LEFT: Live feed — newest at bottom */}
         <div className='sol-feed-col' style={{ flex:'1 1 320px', maxWidth:500, display:'flex', flexDirection:'column', gap:8, paddingRight:16 }}>
           <div style={{ fontSize:11, color:'#52525b', letterSpacing:1, textTransform:'uppercase', display:'flex', alignItems:'center', gap:6 }}>
             <span style={{ width:7, height:7, borderRadius:'50%', background:'#ef4444', display:'inline-block', animation:'pulse 1.2s infinite' }}/>
-            Live feed · newest first
+            Live feed · newest at bottom
             {allGuesses.length > 0 && <span style={{ color:'#3f3f46', marginLeft:4 }}>{allGuesses.length} attempt{allGuesses.length !== 1 ? 's' : ''}</span>}
           </div>
-          <div className='sol-feed-box' style={{ background:'#18181b', borderRadius:10, padding:'10px 14px',
+          <div ref={feedRef} className='sol-feed-box' style={{ background:'#18181b', borderRadius:10, padding:'10px 14px',
             flex:1, minHeight:420, maxHeight:580, overflowY:'auto', border:'1px solid #27272a' }}>
             {allGuesses.length === 0
               ? <div style={{ color:'#3f3f46', textAlign:'center', marginTop:150, fontSize:14 }}>No attempts yet — be first!</div>
@@ -568,7 +578,7 @@ const AppContent = () => {
 
               <div style={{ fontSize:11, color:'#3f3f46', textAlign:'center', lineHeight:1.7 }}>
                 Pay → type word → submit · unlimited attempts<br/>
-                First to guess correctly wins the entire pool
+                First to guess correctly wins <b style={{color:'#a1a1aa'}}>95% of the pool</b>
               </div>
             </div>
           )}
@@ -650,6 +660,7 @@ const AppContent = () => {
               ⏱ Each round lasts <b style={{color:'#71717a'}}>120 seconds</b><br/>
               ♾️ <b style={{color:'#71717a'}}>Unlimited attempts</b> — pay 0.01 SOL for each<br/>
               🔄 If no one wins, prize pool <b style={{color:'#71717a'}}>rolls over</b> to the next round<br/>
+              💸 Winner receives <b style={{color:'#71717a'}}>95% of the pool</b> — 5% service fee<br/>
               👁️ All guesses are <b style={{color:'#71717a'}}>visible to everyone</b> in real time
             </div>
 
