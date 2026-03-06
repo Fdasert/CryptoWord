@@ -11,6 +11,7 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 export const dynamic = 'force-dynamic';
 
 const GAME_WALLET    = '6ei4xUpeKjKs3uHVkmbxcGvhczWrW8QJ2zTf9a4qUHfe';
+const ADMIN_WALLET   = 'QVWqd5fSxaFfT1cdxcmNYofqKFM8tFBJMw97kwRWKpS'; // owner wallet
 const HELIUS_RPC     = 'https://mainnet.helius-rpc.com/?api-key=676b709c-1c3e-4fba-a47d-5cd3f2e78283';
 const SUPABASE_URL   = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -114,6 +115,72 @@ function CircleTimer({ timeLeft, total }: { timeLeft: number; total: number }) {
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
+// ── Admin: Seed Prize Pool ────────────────────────────────────────────────────
+function SeedPoolWidget({ round, publicKey, connection, onSeeded }:
+  { round: Round; publicKey: any; connection: any; onSeeded: (amount: number) => void }) {
+  const [amount, setAmount]   = React.useState('0.1');
+  const [busy,   setBusy]     = React.useState(false);
+  const [msg,    setMsg]      = React.useState('');
+  const { sendTransaction }   = useWallet();
+
+  const handleSeed = async () => {
+    const sol = parseFloat(amount);
+    if (!sol || sol <= 0 || sol > 10) { setMsg('Enter 0.01–10 SOL'); return; }
+    setBusy(true); setMsg('Sending...');
+    try {
+      const lamports = Math.floor(sol * LAMPORTS_PER_SOL);
+      const tx = new Transaction().add(SystemProgram.transfer({
+        fromPubkey: publicKey,
+        toPubkey:   new PublicKey(GAME_WALLET),
+        lamports,
+      }));
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+      const sig = await sendTransaction(tx, connection);
+      setMsg('Confirming...');
+      await connection.confirmTransaction(sig, 'confirmed');
+      const res  = await fetch(edgeFn('verify-payment'), {
+        method: 'POST', headers: apiH(),
+        body: JSON.stringify({ round_id: round.id, wallet_address: publicKey.toString(), tx_signature: sig }),
+      });
+      const data = await res.json();
+      if (data.success) { onSeeded(sol); setMsg(`✅ Added ${sol} SOL to pool!`); }
+      else setMsg(`⚠ ${data.error}`);
+    } catch (e: any) { setMsg(`Error: ${e?.message}`); }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{
+      position:'fixed', bottom:20, right:20, zIndex:90,
+      background:'#111113', border:'1px solid #7c3aed',
+      borderRadius:14, padding:'14px 16px', width:230,
+      boxShadow:'0 0 24px rgba(124,58,237,0.2)',
+    }}>
+      <div style={{fontSize:11,color:'#7c3aed',letterSpacing:1,textTransform:'uppercase',marginBottom:10,fontWeight:700}}>
+        🔑 Admin · Seed Pool
+      </div>
+      <div style={{display:'flex',gap:6,marginBottom:8,alignItems:'center'}}>
+        <input type="number" value={amount} min="0.01" max="10" step="0.05"
+          onChange={e => setAmount(e.target.value)}
+          style={{flex:1,background:'#18181b',border:'1px solid #3f3f46',borderRadius:6,
+            padding:'7px 10px',color:'#fff',fontSize:14,fontFamily:'inherit',outline:'none'}}/>
+        <span style={{color:'#71717a',fontSize:13}}>SOL</span>
+      </div>
+      <button onClick={handleSeed} disabled={busy} style={{
+        width:'100%',padding:'9px 0',borderRadius:7,border:'none',
+        background:busy?'#27272a':'linear-gradient(135deg,#7c3aed,#a855f7)',
+        color:busy?'#52525b':'#fff',fontWeight:700,fontSize:13,
+        cursor:busy?'not-allowed':'pointer',fontFamily:'inherit',
+      }}>
+        {busy?'⏳ Sending...':'➕ Add to Pool'}
+      </button>
+      {msg && <div style={{fontSize:12,color:'#a1a1aa',marginTop:8,lineHeight:1.5}}>{msg}</div>}
+    </div>
+  );
+}
+
 const AppContent = () => {
   const { publicKey, sendTransaction } = useWallet();
   const connection = useMemo(() => new Connection(HELIUS_RPC, 'confirmed'), []);
@@ -401,8 +468,8 @@ const AppContent = () => {
       {/* Header */}
       <header className='sol-header' style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 24px', borderBottom:'1px solid #27272a' }}>
         <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
-          <span style={{ fontSize:24, fontWeight:800, letterSpacing:-1 }}>SOL</span>
-          <span style={{ fontSize:24, fontWeight:800, color:'#a78bfa', letterSpacing:-1 }}>WORD</span>
+          <span style={{ fontSize:24, fontWeight:800, letterSpacing:-1 }}>WORD</span>
+          <span style={{ fontSize:24, fontWeight:800, color:'#a78bfa', letterSpacing:-1 }}>GUESS</span>
           <span className='sol-logo-sub' style={{ fontSize:11, color:'#52525b', marginLeft:4 }}>Guess the 7-letter word · win the pool</span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -585,6 +652,12 @@ const AppContent = () => {
         </div>
       </div>
 
+
+      {/* ── Admin: Seed Prize Pool (only visible to owner wallet) ── */}
+      {publicKey?.toString() === ADMIN_WALLET && round?.status === 'active' && (
+        <SeedPoolWidget round={round} publicKey={publicKey} connection={connection}
+          onSeeded={(amount) => setRound(r => r ? { ...r, prize_pool: r.prize_pool + amount } : r)}/>
+      )}
       {/* ── How to Play Modal ── */}
       {showHowTo && (
         <div
@@ -608,8 +681,8 @@ const AppContent = () => {
             {/* Title */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
               <div>
-                <span style={{ fontSize:22, fontWeight:800 }}>SOL</span>
-                <span style={{ fontSize:22, fontWeight:800, color:'#a78bfa' }}>WORD</span>
+                <span style={{ fontSize:22, fontWeight:800 }}>WORD</span>
+                <span style={{ fontSize:22, fontWeight:800, color:'#a78bfa' }}>GUESS</span>
                 <div style={{ fontSize:12, color:'#52525b', marginTop:2 }}>How to Play</div>
               </div>
               <button onClick={() => setShowHowTo(false)} style={{
