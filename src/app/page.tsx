@@ -17,10 +17,9 @@ const SUPABASE_ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const WORD_LENGTH    = 7;
 const ENTRY_FEE_SOL  = 0.01;
 const ENTRY_FEE_LAMP = ENTRY_FEE_SOL * LAMPORTS_PER_SOL;
-const ROUND_SECS     = 120;
 
 type Color = 'green' | 'yellow' | 'gray' | 'empty';
-interface Round { id: string; status: string; prize_pool: number; entry_fee: number; end_time: string; winner_wallet: string | null; revealed_word?: string | null; }
+interface Round { id: string; status: string; prize_pool: number; entry_fee: number; start_time: string; end_time: string; winner_wallet: string | null; revealed_word?: string | null; }
 interface Guess  { id: string; wallet_address: string; word_attempt: string; result_colors: Color[]; created_at: string; }
 
 const edgeFn = (n: string) => `${SUPABASE_URL}/functions/v1/${n}`;
@@ -180,7 +179,7 @@ const AppContent = () => {
           .then(data => { if (data.revealed_word) setRevealedWord(data.revealed_word); })
           .catch(console.error);
 
-        // 3. Countdown — loadRound only at the very end (new round is ready by then)
+        // 3. Countdown — new round arrives via Realtime, just hide overlay at end
         let remaining = 10;
         const cd = setInterval(() => {
           remaining -= 1;
@@ -188,8 +187,9 @@ const AppContent = () => {
           if (remaining <= 0) {
             clearInterval(cd);
             setInput(''); setWinner(null); setStatus(''); setMyCount(0);
-            setHasPending(false); setRevealedWord(null);
-            loadRound(); // called once, after 10s — round is already created on server
+            setHasPending(false); setRevealedWord(null); setNextRoundIn(0);
+            // Fallback: if Realtime didn't fire, load manually
+            loadRound();
           }
         }, 1000);
       }
@@ -241,6 +241,25 @@ const AppContent = () => {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [round?.id]);
+
+  // ── Realtime: new round created → load immediately (fixes timer showing ~110s) ──
+  useEffect(() => {
+    const ch = supabase.channel('global-new-round')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'global_rounds' },
+        payload => {
+          const nr = payload.new as Round;
+          if (nr.status === 'active') {
+            // New round is live — update state immediately without waiting for countdown to end
+            setRound(nr);
+            setAllGuesses([]);
+            setMyCount(0);
+            setHasPending(false);
+            setWinner(null);
+          }
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
 
   // ── Keyboard ──
   const handleKey = useCallback((k: string) => {
@@ -327,6 +346,7 @@ const AppContent = () => {
   }, [allGuesses, publicKey]);
 
   const isActive   = round?.status === 'active' && !winner && nextRoundIn === 0;
+  const totalSecs  = round ? Math.max(1, Math.round((new Date(round.end_time).getTime() - new Date(round.start_time).getTime()) / 1000)) : 120;
   const timerColor = timeLeft <= 15 ? '#ef4444' : timeLeft <= 30 ? '#f59e0b' : '#22d3ee';
 
   // ── Render ──
@@ -427,7 +447,7 @@ const AppContent = () => {
       {/* Progress bar */}
       <div style={{ height:3, background:'#18181b' }}>
         {isActive && (
-          <div style={{ height:'100%', width:`${(timeLeft/ROUND_SECS)*100}%`,
+          <div style={{ height:'100%', width:`${Math.min(100,(timeLeft/totalSecs)*100)}%`,
             background: timerColor, transition:'width 1s linear, background 0.5s' }}/>
         )}
       </div>
@@ -472,7 +492,7 @@ const AppContent = () => {
             <div className='sol-timer-widget' style={{ background:'#18181b', border:'1px solid #27272a', borderRadius:16,
               padding:'18px 32px', display:'flex', flexDirection:'column', alignItems:'center', gap:8, width:'100%' }}>
               <div style={{ fontSize:11, color:'#52525b', textTransform:'uppercase', letterSpacing:1 }}>Round ends in</div>
-              <CircleTimer timeLeft={timeLeft} total={ROUND_SECS}/>
+              <CircleTimer timeLeft={timeLeft} total={totalSecs}/>
               <div style={{ fontSize:11, color:'#3f3f46' }}>{round?.id.slice(0,8)}</div>
             </div>
           )}
