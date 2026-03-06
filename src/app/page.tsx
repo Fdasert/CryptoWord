@@ -321,10 +321,25 @@ const AppContent = () => {
       if (!gData.success) { setStatus(`⚠ ${gData.error}`); setBusy(false); return; }
 
       setInput('');
-      setStatus(gData.is_winner
-        ? '🏆 You won! Prize will be sent in 5 minutes.'
-        : `Attempt #${gData.attempts_used} done! Pay 0.01 SOL to try again.`
-      );
+      if (gData.is_winner) {
+        // Immediately show winner screen — don't wait for Realtime
+        setWinner(publicKey.toString());
+        setPayoutSecs(300);
+        if (payoutRef.current) clearInterval(payoutRef.current);
+        payoutRef.current = setInterval(() => {
+          setPayoutSecs(p => {
+            if (p <= 1) {
+              clearInterval(payoutRef.current);
+              setInput(''); setWinner(null); setStatus(''); setMyCount(0);
+              setHasPending(false); loadRound();
+              return 0;
+            }
+            return p - 1;
+          });
+        }, 1000);
+      } else {
+        setStatus(`Attempt #${gData.attempts_used} done! Pay 0.01 SOL to try again.`);
+      }
     } catch (e: any) {
       setStatus(`Error: ${e?.message}`);
     }
