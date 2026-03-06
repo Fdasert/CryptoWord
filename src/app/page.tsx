@@ -199,6 +199,7 @@ const AppContent = () => {
   const [nextRoundIn,  setNextRoundIn]  = useState(0);
   const [revealedWord, setRevealedWord] = useState<string|null>(null);
   const [showHowTo,    setShowHowTo]    = useState(false);
+  const [lastWinners,  setLastWinners]  = useState<{wallet:string; word:string; pool:number; ended_at:string}[]>([]);
 
   const timerRef  = useRef<any>(null);
   const payoutRef = useRef<any>(null);
@@ -226,6 +227,27 @@ const AppContent = () => {
   }, [publicKey]);
 
   useEffect(() => { loadRound(); }, [loadRound]);
+
+  // ── Load last winners ──
+  const loadLastWinners = useCallback(async () => {
+    const { data } = await supabase
+      .from('global_rounds')
+      .select('winner_wallet, revealed_word, prize_pool, ended_at')
+      .eq('status', 'completed')
+      .not('winner_wallet', 'is', null)
+      .order('ended_at', { ascending: false })
+      .limit(5);
+    if (data) {
+      setLastWinners(data.map(r => ({
+        wallet: r.winner_wallet!,
+        word:   r.revealed_word ?? '???????',
+        pool:   r.prize_pool,
+        ended_at: r.ended_at,
+      })));
+    }
+  }, []);
+
+  useEffect(() => { loadLastWinners(); }, [loadLastWinners]);
 
   // ── Timer ──
   useEffect(() => {
@@ -323,6 +345,7 @@ const AppContent = () => {
             setMyCount(0);
             setHasPending(false);
             setWinner(null);
+            loadLastWinners(); // refresh winner history
           }
         })
       .subscribe();
@@ -574,6 +597,30 @@ const AppContent = () => {
               : allGuesses.map(g => <GuessRow key={g.id} guess={g} isMe={publicKey?.toString() === g.wallet_address}/>)
             }
           </div>
+
+          {/* Last winners FOMO widget */}
+          {lastWinners.length > 0 && (
+            <div style={{ background:'#111113', border:'1px solid #27272a', borderRadius:10, padding:'12px 14px' }}>
+              <div style={{ fontSize:11, color:'#52525b', letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>
+                🏆 Recent Winners
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {lastWinners.map((w, i) => (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12 }}>
+                    <span style={{ color:'#3f3f46', width:14, textAlign:'center', flexShrink:0 }}>{i + 1}</span>
+                    <span style={{ fontFamily:'monospace', color:'#71717a', flexShrink:0 }}>{short(w.wallet)}</span>
+                    <span style={{ color:'#3f3f46' }}>·</span>
+                    <span style={{ fontWeight:700, color:'#a78bfa', letterSpacing:2, textTransform:'uppercase', flexShrink:0 }}>
+                      {w.word !== '???????' ? w.word : '·······'}
+                    </span>
+                    <span style={{ color:'#52525b', marginLeft:'auto', flexShrink:0, fontFamily:'monospace' }}>
+                      +{(w.pool * 0.95).toFixed(3)}◎
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT: Timer + controls */}
@@ -594,10 +641,26 @@ const AppContent = () => {
             <div style={{ background:'rgba(124,58,237,0.15)', border:'1px solid #7c3aed', borderRadius:16,
               padding:'20px 24px', textAlign:'center', width:'100%', animation:'fadeIn 0.5s' }}>
               <div style={{ fontSize:32, marginBottom:8 }}>🏆</div>
-              {winner === publicKey?.toString()
-                ? <><div style={{ color:'#fbbf24', fontWeight:700, fontSize:18 }}>You won!</div><div style={{ color:'#6b7280', fontSize:13, marginTop:4 }}>Prize arrives in {payoutSecs}s</div></>
-                : <><div style={{ color:'#a78bfa', fontWeight:700 }}>{short(winner)} won!</div><div style={{ color:'#6b7280', fontSize:13, marginTop:4 }}>New round in {payoutSecs}s</div></>
-              }
+          {winner === publicKey?.toString()
+            ? <>
+                <div style={{ color:'#fbbf24', fontWeight:700, fontSize:18 }}>You won!</div>
+                <div style={{ color:'#6b7280', fontSize:13, marginTop:4 }}>Prize arrives in ~{payoutSecs}s</div>
+                <button onClick={() => {
+                  const poolText = round ? `${(round.prize_pool * 0.95).toFixed(4)} SOL` : 'SOL';
+                  const text = `🏆 I just won ${poolText} on WordGuess!\n\nGuess the 7-letter word & win the prize pool 🔮\n\n👉 wordguess.space`;
+                  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+                  window.open(url, '_blank');
+                }} style={{
+                  marginTop:12, padding:'8px 18px', borderRadius:7, border:'none',
+                  background:'#1d9bf0', color:'#fff', fontWeight:700, fontSize:13,
+                  cursor:'pointer', display:'flex', alignItems:'center', gap:6, fontFamily:'inherit',
+                }}>
+                  <svg width={15} height={15} viewBox="0 0 24 24" fill="white"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.261 5.632 5.903-5.632Zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                  Share your win
+                </button>
+              </>
+            : <><div style={{ color:'#a78bfa', fontWeight:700 }}>{short(winner)} won!</div><div style={{ color:'#6b7280', fontSize:13, marginTop:4 }}>New round in {payoutSecs}s</div></>
+          }
             </div>
           )}
 
