@@ -17,7 +17,11 @@ export const metadata: Metadata = {
     description: 'Pay 0.01 SOL per attempt. First to guess wins the pool.',
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: '32x32' },
+    ],
+    apple: '/favicon.svg',
   },
   metadataBase: new URL('https://wordguess.space'),
 };
