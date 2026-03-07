@@ -235,12 +235,13 @@ const AppContent = () => {
       .select('winner_wallet, revealed_word, prize_pool, ended_at')
       .eq('status', 'completed')
       .not('winner_wallet', 'is', null)
+      .not('revealed_word', 'is', null)   // FIX: only show rounds where word is revealed
       .order('ended_at', { ascending: false })
       .limit(5);
     if (data) {
       setLastWinners(data.map(r => ({
         wallet: r.winner_wallet!,
-        word:   r.revealed_word ?? '???????',
+        word:   r.revealed_word!,
         pool:   r.prize_pool,
         ended_at: r.ended_at,
       })));
@@ -345,7 +346,10 @@ const AppContent = () => {
             setMyCount(0);
             setHasPending(false);
             setWinner(null);
-            loadLastWinners(); // refresh winner history
+            setNextRoundIn(0);        // FIX: unfreeze game after win
+            setRevealedWord(null);    // FIX: clear old word
+            if (payoutRef.current) clearInterval(payoutRef.current); // FIX: stop payout timer
+            setTimeout(() => loadLastWinners(), 1500); // FIX: delay so revealed_word is in DB
           }
         })
       .subscribe();
@@ -611,7 +615,7 @@ const AppContent = () => {
                     <span style={{ fontFamily:'monospace', color:'#71717a', flexShrink:0 }}>{short(w.wallet)}</span>
                     <span style={{ color:'#3f3f46' }}>·</span>
                     <span style={{ fontWeight:700, color:'#a78bfa', letterSpacing:2, textTransform:'uppercase', flexShrink:0 }}>
-                      {w.word !== '???????' ? w.word : '·······'}
+                      {w.word && w.word !== '???????' ? w.word : '───────'}
                     </span>
                     <span style={{ color:'#52525b', marginLeft:'auto', flexShrink:0, fontFamily:'monospace' }}>
                       +{(w.pool * 0.95).toFixed(3)}◎
