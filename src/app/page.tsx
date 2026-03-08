@@ -1,5 +1,6 @@
 'use client';
 
+import { Analytics } from "@vercel/analytics/next"
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
