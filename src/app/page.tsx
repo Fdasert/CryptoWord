@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 const GAME_WALLET    = '6ei4xUpeKjKs3uHVkmbxcGvhczWrW8QJ2zTf9a4qUHfe';
 const ADMIN_WALLET   = 'QVWqd5fSxaFfT1cdxcmNYofqKFM8tFBJMw97kwRWKpS'; // owner wallet
-const HELIUS_RPC = `https://mainnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_HELIUS_RPC_KEY}`
+const HELIUS_RPC     = 'https://mainnet.helius-rpc.com/?api-key=676b709c-1c3e-4fba-a47d-5cd3f2e78283';
 const SUPABASE_URL   = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const WORD_LENGTH    = 7;
@@ -210,7 +210,11 @@ const AppContent = () => {
   const loadRound = useCallback(async () => {
     const { data } = await supabase.from('active_round').select('*').maybeSingle();
     setRound(data ?? null);
-    if (!data) { setAllGuesses([]); setMyCount(0); setHasPending(false); return; }
+    if (!data) { setAllGuesses([]); setMyCount(0); setHasPending(false); setNextRoundIn(0); return; }
+
+    // FIX: при обновлении страницы сбрасываем overlay — он не нужен если раунд уже активен
+    setNextRoundIn(0);
+    setRevealedWord(null);
 
     const { data: guesses } = await supabase
       .from('guesses').select('*').eq('round_id', data.id).order('created_at', { ascending: true });
@@ -261,6 +265,14 @@ const AppContent = () => {
       setTimeLeft(secs);
       if (secs === 0) {
         clearInterval(timerRef.current);
+
+        // FIX: если вкладка была неактивна долго — проверяем что раунд не сменился
+        // Если прошло больше 15 секунд после end_time — просто грузим новый раунд без overlay
+        const overdue = Date.now() - new Date(round.end_time).getTime();
+        if (overdue > 15000) {
+          loadRound();
+          return;
+        }
 
         // 1. Show overlay IMMEDIATELY — no waiting for server
         setNextRoundIn(10);
