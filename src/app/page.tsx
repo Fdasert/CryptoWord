@@ -209,10 +209,35 @@ const AppContent = () => {
   // ── Load round ──
   const loadRound = useCallback(async () => {
     const { data } = await supabase.from('active_round').select('*').maybeSingle();
-    setRound(data ?? null);
-    if (!data) { setAllGuesses([]); setMyCount(0); setHasPending(false); setNextRoundIn(0); return; }
 
-    // FIX: при обновлении страницы сбрасываем overlay — он не нужен если раунд уже активен
+    if (!data) {
+      // Нет активного раунда — может только что завершился (< 15 сек назад)?
+      const { data: recent } = await supabase
+        .from('global_rounds')
+        .select('id, status, prize_pool, winner_wallet, revealed_word, ended_at, start_time, end_time, entry_fee')
+        .eq('status', 'completed')
+        .order('ended_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recent && recent.ended_at) {
+        const secsSinceEnd = (Date.now() - new Date(recent.ended_at).getTime()) / 1000;
+        if (secsSinceEnd < 15) {
+          // Раунд только что завершился — показываем overlay при обновлении
+          setRound(recent as any);
+          setWinner(recent.winner_wallet ?? null);
+          setRevealedWord(recent.revealed_word ?? null);
+          const remaining = Math.max(1, Math.round(15 - secsSinceEnd));
+          setNextRoundIn(remaining);
+          return;
+        }
+      }
+      setRound(null);
+      setAllGuesses([]); setMyCount(0); setHasPending(false); setNextRoundIn(0);
+      return;
+    }
+
+    setRound(data);
     setNextRoundIn(0);
     setRevealedWord(null);
 
