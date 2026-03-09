@@ -528,16 +528,36 @@ const AppContent = () => {
         // Show overlay immediately — Realtime will clear it when new round starts
         setNextRoundIn(99);
 
-        // Call end-round in background to get revealed_word
-        fetch(edgeFn('end-round'), { method:'POST', headers:apiH(), body:JSON.stringify({ round_id: round.id }) })
-          .then(r => r.json())
-          .then(data => { if (data.revealed_word) setRevealedWord(data.revealed_word); })
-          .catch(console.error);
+        // Get revealed_word from last completed round (reliable fallback)
+        supabase.from('global_rounds')
+          .select('revealed_word')
+          .eq('id', round.id)
+          .single()
+          .then(({ data }) => {
+            if (data?.revealed_word) {
+              setRevealedWord(data.revealed_word);
+            } else {
+              // Not set yet — call end-round to trigger it
+              fetch(edgeFn('end-round'), { method:'POST', headers:apiH(), body:JSON.stringify({ round_id: round.id }) })
+                .then(r => r.json())
+                .then(d => { if (d.revealed_word) setRevealedWord(d.revealed_word); })
+                .catch(console.error);
+            }
+          });
 
-        // Fallback: if Realtime didn't fire within 15s, reload manually
-        setTimeout(() => {
-          loadRound();
-        }, 15000);
+        // Fallback polling: keep trying every 8s until new round appears
+        let attempts = 0;
+        const poll = () => {
+          attempts++;
+          supabase.from('active_round').select('*').maybeSingle().then(({ data }) => {
+            if (data) {
+              loadRound(); // new round found — load it
+            } else if (attempts < 10) {
+              setTimeout(poll, 8000); // keep polling up to ~80s
+            }
+          });
+        };
+        setTimeout(poll, 8000);
       }
     }, 1000);
     return () => clearInterval(timerRef.current);
