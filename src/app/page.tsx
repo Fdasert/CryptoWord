@@ -563,7 +563,7 @@ const AppContent = () => {
     return () => clearInterval(timerRef.current);
   }, [round?.id, round?.end_time]);
 
-  // ── Realtime: new guess → append to bottom (auto-scroll handles newest) ──
+  // ── Realtime: new guess (INSERT) + colors arriving (UPDATE) ──
   useEffect(() => {
     if (!round) return;
     const ch = supabase.channel(`g:${round.id}`)
@@ -575,6 +575,12 @@ const AppContent = () => {
             setMyCount(p => p + 1);
             setHasPending(false);
           }
+        })
+      // FIX: check-guess does INSERT first, then UPDATE with result_colors — listen to both
+      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'guesses', filter:`round_id=eq.${round.id}` },
+        payload => {
+          const g = payload.new as Guess;
+          setAllGuesses(prev => prev.map(x => x.id === g.id ? { ...x, result_colors: g.result_colors } : x));
         })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
