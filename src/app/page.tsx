@@ -391,7 +391,8 @@ const AppContent = () => {
     const { data } = await supabase.from('active_round').select('*').maybeSingle();
 
     if (!data) {
-      // Нет активного раунда — может только что завершился (< 15 сек назад)?
+      // No active round — show overlay with last completed round (no time limit)
+      // Survives page refresh and tab switching
       const { data: recent } = await supabase
         .from('global_rounds')
         .select('id, status, prize_pool, winner_wallet, revealed_word, ended_at, start_time, end_time, entry_fee')
@@ -400,20 +401,16 @@ const AppContent = () => {
         .limit(1)
         .maybeSingle();
 
-      if (recent && recent.ended_at) {
-        const secsSinceEnd = (Date.now() - new Date(recent.ended_at).getTime()) / 1000;
-        if (secsSinceEnd < 15) {
-          // Раунд только что завершился — показываем overlay при обновлении
-          setRound(recent as any);
-          setWinner(recent.winner_wallet ?? null);
-          setRevealedWord(recent.revealed_word ?? null);
-          const remaining = Math.max(1, Math.round(15 - secsSinceEnd));
-          setNextRoundIn(remaining);
-          return;
-        }
+      if (recent) {
+        setRound(recent as any);
+        setWinner(recent.winner_wallet ?? null);
+        setRevealedWord(recent.revealed_word ?? null);
+        setNextRoundIn(99); // keeps overlay visible; Realtime clears it when new round starts
+      } else {
+        setRound(null);
+        setNextRoundIn(0);
       }
-      setRound(null);
-      setAllGuesses([]); setMyCount(0); setHasPending(false); setNextRoundIn(0);
+      setAllGuesses([]); setMyCount(0); setHasPending(false);
       return;
     }
 
@@ -479,28 +476,19 @@ const AppContent = () => {
           return;
         }
 
-        // 1. Show overlay IMMEDIATELY — no waiting for server
-        setNextRoundIn(10);
+        // Show overlay immediately — Realtime will clear it when new round starts
+        setNextRoundIn(99);
 
-        // 2. Call end-round in background (fire & forget)
+        // Call end-round in background to get revealed_word
         fetch(edgeFn('end-round'), { method:'POST', headers:apiH(), body:JSON.stringify({ round_id: round.id }) })
           .then(r => r.json())
           .then(data => { if (data.revealed_word) setRevealedWord(data.revealed_word); })
           .catch(console.error);
 
-        // 3. Countdown — new round arrives via Realtime, just hide overlay at end
-        let remaining = 10;
-        const cd = setInterval(() => {
-          remaining -= 1;
-          setNextRoundIn(remaining);
-          if (remaining <= 0) {
-            clearInterval(cd);
-            setInput(''); setWinner(null); setStatus(''); setMyCount(0);
-            setHasPending(false); setRevealedWord(null); setNextRoundIn(0);
-            // Fallback: if Realtime didn't fire, load manually
-            loadRound();
-          }
-        }, 1000);
+        // Fallback: if Realtime didn't fire within 15s, reload manually
+        setTimeout(() => {
+          loadRound();
+        }, 15000);
       }
     }, 1000);
     return () => clearInterval(timerRef.current);
@@ -764,17 +752,13 @@ const AppContent = () => {
             }
           </div>
           <div style={{
-            width:120, height:120, borderRadius:'50%',
-            border:`6px solid #27272a`, display:'flex', flexDirection:'column',
-            alignItems:'center', justifyContent:'center', position:'relative',
+            display:'flex', flexDirection:'column', alignItems:'center', gap:6,
           }}>
-            <svg width={120} height={120} style={{position:'absolute',top:0,left:0,transform:'rotate(-90deg)'}}>
-              <circle cx={60} cy={60} r={54} fill="none" stroke="#7c3aed" strokeWidth={6}
-                strokeDasharray={`${(nextRoundIn/10)*2*Math.PI*54} ${2*Math.PI*54}`}
-                strokeLinecap="round" style={{transition:'stroke-dasharray 1s linear'}}/>
-            </svg>
-            <div style={{fontSize:36,fontWeight:800,color:'#a78bfa'}}>{nextRoundIn}</div>
-            <div style={{fontSize:11,color:'#52525b',letterSpacing:1}}>NEW ROUND</div>
+            <div style={{
+              width:12, height:12, borderRadius:'50%', background:'#7c3aed',
+              animation:'pulse 1.2s infinite',
+            }}/>
+            <div style={{fontSize:13,color:'#52525b',letterSpacing:1}}>NEXT ROUND STARTING...</div>
           </div>
         </div>
       )}
