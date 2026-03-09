@@ -20,6 +20,31 @@ const ENTRY_FEE_SOL  = 0.01;
 const ENTRY_FEE_LAMP = ENTRY_FEE_SOL * LAMPORTS_PER_SOL;
 
 type Color = 'green' | 'yellow' | 'gray' | 'empty';
+
+// ── Session & Tracking ────────────────────────────────────────────────────────
+function getSessionId(): string {
+  if (typeof window === 'undefined') return 'ssr';
+  let sid = sessionStorage.getItem('wg_sid');
+  if (!sid) { sid = crypto.randomUUID(); sessionStorage.setItem('wg_sid', sid); }
+  return sid;
+}
+
+async function trackPresence(mode: 'browsing' | 'demo' | 'playing') {
+  try {
+    await supabase.from('site_presence').upsert(
+      { session_id: getSessionId(), mode, last_ping: new Date().toISOString() },
+      { onConflict: 'session_id' }
+    );
+  } catch {}
+}
+
+async function trackDemoEvent(event: 'start' | 'win' | 'give_up', guesses_made = 0) {
+  try {
+    await supabase.from('demo_events').insert(
+      { session_id: getSessionId(), event, guesses_made }
+    );
+  } catch {}
+}
 interface Round { id: string; status: string; prize_pool: number; entry_fee: number; start_time: string; end_time: string; winner_wallet: string | null; revealed_word?: string | null; }
 interface Guess  { id: string; wallet_address: string; word_attempt: string; result_colors: Color[]; created_at: string; }
 
@@ -79,7 +104,10 @@ function DemoMode({ onExit }: { onExit: () => void }) {
       });
       return map;
     });
-    if (colors.every(c => c === 'green')) setWon(true);
+    if (colors.every(c => c === 'green')) {
+      setWon(true);
+      trackDemoEvent('win', guesses.length + 1);
+    }
     setInput('');
   }, [input, secret, won]);
 
@@ -388,10 +416,31 @@ const AppContent = () => {
   const [showHowTo,    setShowHowTo]    = useState(false);
   const [lastWinners,  setLastWinners]  = useState<{wallet:string; word:string; pool:number; ended_at:string}[]>([]);
   const [demoMode,     setDemoMode]     = useState(false);
+  const [onlineCount,  setOnlineCount]  = useState<number | null>(null);
 
-  const timerRef  = useRef<any>(null);
+  const timerRef    = useRef<any>(null);
+  const presenceRef = useRef<any>(null);
   const payoutRef = useRef<any>(null);
   const feedRef   = useRef<HTMLDivElement>(null);
+
+  // ── Presence & Online Counter ──
+  useEffect(() => {
+    const mode = demoMode ? 'demo' : (publicKey ? 'playing' : 'browsing');
+    trackPresence(mode);
+
+    const fetchOnline = async () => {
+      const { data } = await supabase.rpc('get_online_count');
+      if (data !== null) setOnlineCount(data);
+    };
+    fetchOnline();
+
+    presenceRef.current = setInterval(() => {
+      trackPresence(demoMode ? 'demo' : (publicKey ? 'playing' : 'browsing'));
+      fetchOnline();
+    }, 30_000);
+
+    return () => clearInterval(presenceRef.current);
+  }, [demoMode, publicKey]);
 
   // ── Load round ──
   const loadRound = useCallback(async () => {
@@ -800,8 +849,17 @@ const AppContent = () => {
         <span style={{ color:'#71717a' }}>0.01 SOL / attempt · unlimited tries</span>
         <span style={{ color:'#3f3f46' }}>·</span>
         <span style={{ color:'#52525b', fontSize:12 }}>5% service fee on winnings</span>
+        {onlineCount !== null && onlineCount > 0 && (
+          <>
+            <span style={{ color:'#3f3f46' }}>·</span>
+            <span style={{ color:'#71717a', fontSize:12 }}>
+              <span style={{ display:'inline-block', width:7, height:7, borderRadius:'50%', background:'#4ade80', marginRight:5, boxShadow:'0 0 6px #4ade80', verticalAlign:'middle' }} />
+              {onlineCount} online
+            </span>
+          </>
+        )}
         {!publicKey && !demoMode && (
-          <button onClick={() => setDemoMode(true)} style={{
+          <button onClick={() => { setDemoMode(true); trackDemoEvent('start'); }} style={{
             marginLeft:'auto', padding:'4px 12px', borderRadius:6, border:'1px solid rgba(245,158,11,0.4)',
             background:'rgba(245,158,11,0.07)', color:'#fbbf24', fontSize:12, fontWeight:700,
             cursor:'pointer', fontFamily:'inherit',
@@ -911,7 +969,7 @@ const AppContent = () => {
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:16, width:'100%' }}>
               <div style={{ color:'#52525b', fontSize:14, textAlign:'center' }}>Connect wallet to play for real</div>
               <div style={{ color:'#3f3f46', fontSize:12 }}>— or —</div>
-              <button onClick={() => setDemoMode(true)} style={{
+              <button onClick={() => { setDemoMode(true); trackDemoEvent('start'); }} style={{
                 width:'100%', padding:'13px 0', borderRadius:8, border:'1px solid #f59e0b',
                 background:'rgba(245,158,11,0.08)', color:'#fbbf24',
                 fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:'inherit',
