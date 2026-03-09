@@ -62,6 +62,13 @@ function DemoMode({ onExit }: { onExit: () => void }) {
 
   const submit = useCallback(() => {
     if (input.length !== WORD_LENGTH || won) return;
+    // Demo uses its own word list for validation
+    const upper = input.toUpperCase();
+    if (!DEMO_WORDS.includes(upper)) {
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      return; // silently reject — demo is forgiving
+    }
     const colors = evalGuess(input, secret);
     setGuesses(prev => [...prev, { word: input, colors }]);
     setLc(prev => {
@@ -626,7 +633,19 @@ const AppContent = () => {
       const gRes  = await fetch(edgeFn('check-guess'), { method:'POST', headers:apiH(),
         body: JSON.stringify({ round_id: round.id, wallet_address: publicKey.toString(), word_attempt: input }) });
       const gData = await gRes.json();
-      if (!gData.success) { setStatus(`⚠ ${gData.error}`); setBusy(false); return; }
+      if (!gData.success) {
+        if (gData.not_a_word) {
+          setStatus('');
+          setShake(true);
+          setTimeout(() => setShake(false), 500);
+          // Show brief "not a word" message without clearing input
+          setStatus('❌ Not a valid word — try another');
+        } else {
+          setStatus(`⚠ ${gData.error}`);
+        }
+        setBusy(false);
+        return;
+      }
 
       setInput('');
       if (gData.is_winner) {
