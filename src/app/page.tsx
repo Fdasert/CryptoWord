@@ -87,13 +87,6 @@ function DemoMode({ onExit }: { onExit: () => void }) {
 
   const submit = useCallback(() => {
     if (input.length !== WORD_LENGTH || won) return;
-    // Demo uses its own word list for validation
-    const upper = input.toUpperCase();
-    if (!DEMO_WORDS.includes(upper)) {
-      setShake(true);
-      setTimeout(() => setShake(false), 500);
-      return; // silently reject — demo is forgiving
-    }
     const colors = evalGuess(input, secret);
     setGuesses(prev => [...prev, { word: input, colors }]);
     setLc(prev => {
