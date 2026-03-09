@@ -23,6 +23,186 @@ type Color = 'green' | 'yellow' | 'gray' | 'empty';
 interface Round { id: string; status: string; prize_pool: number; entry_fee: number; start_time: string; end_time: string; winner_wallet: string | null; revealed_word?: string | null; }
 interface Guess  { id: string; wallet_address: string; word_attempt: string; result_colors: Color[]; created_at: string; }
 
+// ── Demo ──────────────────────────────────────────────────────────────────────
+const DEMO_WORDS = ['PLANTED','FREEDOM','CAPTURE','MISSING','BLANKET','DRAGONS','BROTHER','CLIMATE','FLOWERS','TRIUMPH','MONSTER','PERFECT','JOURNEY','KITCHEN','CABINET','CHAPTER','SCIENCE','CAPTAIN','BELONGS','CURTAIN','THROUGH','GRAVITY','PROPHET','SUNRISE'];
+
+function evalGuess(attempt: string, secret: string): Color[] {
+  const res: Color[] = Array(WORD_LENGTH).fill('gray');
+  const secArr = secret.split(''), used = Array(WORD_LENGTH).fill(false);
+  // pass 1: greens
+  for (let i = 0; i < WORD_LENGTH; i++) {
+    if (attempt[i] === secArr[i]) { res[i] = 'green'; used[i] = true; }
+  }
+  // pass 2: yellows
+  for (let i = 0; i < WORD_LENGTH; i++) {
+    if (res[i] === 'green') continue;
+    for (let j = 0; j < WORD_LENGTH; j++) {
+      if (!used[j] && attempt[i] === secArr[j]) { res[i] = 'yellow'; used[j] = true; break; }
+    }
+  }
+  return res;
+}
+
+// ── Demo Mode Component ───────────────────────────────────────────────────────
+function DemoMode({ onExit }: { onExit: () => void }) {
+  const [secret]  = useState(() => {
+    const words = DEMO_WORDS.filter(w => w.length === WORD_LENGTH);
+    return words[Math.floor(Math.random() * words.length)];
+  });
+  const [guesses, setGuesses] = useState<{ word: string; colors: Color[] }[]>([]);
+  const [input,   setInput]   = useState('');
+  const [shake,   setShake]   = useState(false);
+  const [won,     setWon]     = useState(false);
+  const [lc,      setLc]      = useState<Record<string, Color>>({});
+  const feedRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [guesses.length]);
+
+  const submit = useCallback(() => {
+    if (input.length !== WORD_LENGTH || won) return;
+    const colors = evalGuess(input, secret);
+    setGuesses(prev => [...prev, { word: input, colors }]);
+    setLc(prev => {
+      const map = { ...prev };
+      input.split('').forEach((l, i) => {
+        const c = colors[i], p = map[l];
+        if (c === 'green' || !p || (p === 'gray' && c === 'yellow')) map[l] = c;
+      });
+      return map;
+    });
+    if (colors.every(c => c === 'green')) setWon(true);
+    setInput('');
+  }, [input, secret, won]);
+
+  const handleKey = useCallback((k: string) => {
+    if (won) return;
+    if (k === '⌫' || k === 'Backspace') setInput(p => p.slice(0, -1));
+    else if (k === 'ENTER' || k === 'Enter') {
+      if (input.length === WORD_LENGTH) submit();
+      else { setShake(true); setTimeout(() => setShake(false), 500); }
+    } else if (/^[A-Za-z]$/.test(k) && input.length < WORD_LENGTH) {
+      setInput(p => p + k.toUpperCase());
+    }
+  }, [input, won, submit]);
+
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => handleKey(e.key);
+    window.addEventListener('keydown', fn);
+    return () => window.removeEventListener('keydown', fn);
+  }, [handleKey]);
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', gap: 14 }}>
+
+      {/* Demo banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, padding: '9px 18px',
+        background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
+        borderRadius: 10, fontSize: 13, color: '#fbbf24', width: '100%', maxWidth: 600,
+      }}>
+        <span style={{ fontSize: 16 }}>🎮</span>
+        <span><b>Demo mode</b> — no real SOL, just practice. The secret word is a random 7-letter word.</span>
+        <button onClick={onExit} style={{
+          marginLeft: 'auto', padding: '5px 14px', borderRadius: 6, border: '1px solid #f59e0b',
+          background: 'transparent', color: '#fbbf24', fontSize: 12, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+        }}>✕ Exit Demo</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, width: '100%', maxWidth: 600, flexWrap: 'wrap' }}>
+
+        {/* Guess feed */}
+        <div style={{ flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 11, color: '#52525b', letterSpacing: 1, textTransform: 'uppercase' }}>Your guesses</div>
+          <div ref={feedRef} style={{
+            background: '#18181b', border: '1px solid #27272a', borderRadius: 10,
+            padding: '10px 14px', minHeight: 260, maxHeight: 360, overflowY: 'auto',
+          }}>
+            {guesses.length === 0
+              ? <div style={{ color: '#3f3f46', textAlign: 'center', marginTop: 80, fontSize: 14 }}>Type a word and press ENTER</div>
+              : guesses.map((g, i) => (
+                <div key={i} style={{
+                  display: 'flex', gap: 3, marginBottom: 5,
+                  animation: 'fadeIn 0.3s ease',
+                  background: g.colors.every(c => c === 'green') ? 'rgba(83,141,78,0.12)' : 'transparent',
+                  borderRadius: 6, padding: '3px 0',
+                }}>
+                  {g.word.split('').map((l, j) => <Tile key={j} letter={l} color={g.colors[j]} />)}
+                </div>
+              ))
+            }
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div style={{ flex: '0 0 260px', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+
+          {won ? (
+            <div style={{
+              background: 'rgba(83,141,78,0.15)', border: '1px solid #538d4e',
+              borderRadius: 14, padding: '20px 24px', textAlign: 'center', width: '100%',
+              animation: 'fadeIn 0.4s',
+            }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
+              <div style={{ fontWeight: 800, fontSize: 18, color: '#4ade80' }}>You got it!</div>
+              <div style={{ color: '#71717a', fontSize: 13, margin: '8px 0 4px' }}>The word was</div>
+              <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginBottom: 16 }}>
+                {secret.split('').map((l, i) => <Tile key={i} letter={l} color="green" />)}
+              </div>
+              <div style={{ fontSize: 13, color: '#71717a', marginBottom: 14 }}>
+                Solved in <b style={{ color: '#a1a1aa' }}>{guesses.length}</b> attempt{guesses.length !== 1 ? 's' : ''}
+              </div>
+              <button onClick={onExit} style={{
+                width: '100%', padding: '12px 0', borderRadius: 8, border: 'none',
+                background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
+                color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                🔮 Play for Real SOL
+              </button>
+              <div style={{ fontSize: 11, color: '#52525b', marginTop: 8 }}>Connect wallet & win real prizes</div>
+            </div>
+          ) : (
+            <>
+              <InputRow value={input} shake={shake} />
+              <button onClick={submit} disabled={input.length !== WORD_LENGTH} style={{
+                width: '100%', padding: '13px 0', borderRadius: 8, border: 'none',
+                background: input.length === WORD_LENGTH
+                  ? 'linear-gradient(135deg,#059669,#10b981)'
+                  : '#27272a',
+                color: input.length === WORD_LENGTH ? '#fff' : '#52525b',
+                fontWeight: 700, fontSize: 15, cursor: input.length === WORD_LENGTH ? 'pointer' : 'not-allowed',
+                fontFamily: 'inherit', transition: 'all 0.2s',
+                boxShadow: input.length === WORD_LENGTH ? '0 0 20px rgba(16,185,129,0.25)' : 'none',
+              }}>
+                ✅ Submit Guess
+              </button>
+              <div style={{ fontSize: 12, color: '#52525b', textAlign: 'center' }}>
+                {guesses.length} attempt{guesses.length !== 1 ? 's' : ''} · no cost in demo
+              </div>
+            </>
+          )}
+
+          <Keyboard lc={lc} onKey={handleKey} />
+
+          {/* CTA to real game */}
+          {!won && (
+            <button onClick={onExit} style={{
+              width: '100%', padding: '12px 0', borderRadius: 8, border: '1px solid #7c3aed',
+              background: 'rgba(124,58,237,0.1)', color: '#a78bfa',
+              fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+              transition: 'all 0.2s',
+            }}>
+              🔮 Play for Real SOL →
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const edgeFn = (n: string) => `${SUPABASE_URL}/functions/v1/${n}`;
 const apiH   = () => ({ 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` });
 const short  = (w: string) => w.slice(0,4) + '..' + w.slice(-4);
@@ -200,6 +380,7 @@ const AppContent = () => {
   const [revealedWord, setRevealedWord] = useState<string|null>(null);
   const [showHowTo,    setShowHowTo]    = useState(false);
   const [lastWinners,  setLastWinners]  = useState<{wallet:string; word:string; pool:number; ended_at:string}[]>([]);
+  const [demoMode,     setDemoMode]     = useState(false);
 
   const timerRef  = useRef<any>(null);
   const payoutRef = useRef<any>(null);
@@ -606,6 +787,9 @@ const AppContent = () => {
         )}
       </div>
 
+      {/* Demo Mode */}
+      {demoMode && <DemoMode onExit={() => setDemoMode(false)} />}
+
       {/* Stats */}
       <div className='sol-stats' style={{ display:'flex', gap:20, padding:'9px 24px', borderBottom:'1px solid #27272a', background:'#0f0f10', fontSize:13, alignItems:'center', flexWrap:'wrap' }}>
         <span>💰 <b style={{ color:'#fbbf24' }}>{(round?.prize_pool ?? 0).toFixed(4)} SOL</b> prize pool</span>
@@ -613,6 +797,20 @@ const AppContent = () => {
         <span style={{ color:'#71717a' }}>0.01 SOL / attempt · unlimited tries</span>
         <span style={{ color:'#3f3f46' }}>·</span>
         <span style={{ color:'#52525b', fontSize:12 }}>5% service fee on winnings</span>
+        {!publicKey && !demoMode && (
+          <button onClick={() => setDemoMode(true)} style={{
+            marginLeft:'auto', padding:'4px 12px', borderRadius:6, border:'1px solid rgba(245,158,11,0.4)',
+            background:'rgba(245,158,11,0.07)', color:'#fbbf24', fontSize:12, fontWeight:700,
+            cursor:'pointer', fontFamily:'inherit',
+          }}>🎮 Try Demo</button>
+        )}
+        {demoMode && (
+          <button onClick={() => setDemoMode(false)} style={{
+            marginLeft:'auto', padding:'4px 12px', borderRadius:6, border:'1px solid #3f3f46',
+            background:'transparent', color:'#71717a', fontSize:12, fontWeight:700,
+            cursor:'pointer', fontFamily:'inherit',
+          }}>✕ Exit Demo</button>
+        )}
         {winner && (
           <span style={{ marginLeft:'auto', animation:'fadeIn 0.4s' }}>
             🏆 <b style={{ color:'#a78bfa' }}>{short(winner)}</b> won!
@@ -622,7 +820,7 @@ const AppContent = () => {
       </div>
 
       {/* Body: two-column */}
-      <div className='sol-body' style={{ flex:1, display:'flex', gap:0, justifyContent:'center', padding:'20px 16px', flexWrap:'wrap' }}>
+      {!demoMode && <div className='sol-body' style={{ flex:1, display:'flex', gap:0, justifyContent:'center', padding:'20px 16px', flexWrap:'wrap' }}>
 
         {/* LEFT: Live feed — newest at bottom */}
         <div className='sol-feed-col' style={{ flex:'1 1 320px', maxWidth:500, display:'flex', flexDirection:'column', gap:8, paddingRight:16 }}>
@@ -707,7 +905,19 @@ const AppContent = () => {
 
           {/* Play controls */}
           {!publicKey ? (
-            <div style={{ color:'#52525b', fontSize:14, textAlign:'center', padding:16 }}>Connect your wallet to play</div>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:16, width:'100%' }}>
+              <div style={{ color:'#52525b', fontSize:14, textAlign:'center' }}>Connect wallet to play for real</div>
+              <div style={{ color:'#3f3f46', fontSize:12 }}>— or —</div>
+              <button onClick={() => setDemoMode(true)} style={{
+                width:'100%', padding:'13px 0', borderRadius:8, border:'1px solid #f59e0b',
+                background:'rgba(245,158,11,0.08)', color:'#fbbf24',
+                fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:'inherit',
+                transition:'all 0.2s',
+              }}>
+                🎮 Try Demo — Free
+              </button>
+              <div style={{ fontSize:12, color:'#52525b', textAlign:'center' }}>No wallet needed · no real SOL</div>
+            </div>
           ) : !round || round.status !== 'active' || winner ? null : (
             <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:11, alignItems:'center' }}>
 
@@ -754,7 +964,7 @@ const AppContent = () => {
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
 
       {/* ── Admin: Seed Prize Pool (only visible to owner wallet) ── */}
