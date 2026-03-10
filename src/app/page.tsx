@@ -85,8 +85,18 @@ function DemoMode({ onExit }: { onExit: () => void }) {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [guesses.length]);
 
-  const submit = useCallback(() => {
+  const submit = useCallback(async () => {
     if (input.length !== WORD_LENGTH || won) return;
+
+    // Validate against valid_words table (same as real game)
+    const { data: valid } = await supabase
+      .from('valid_words').select('word').eq('word', input).maybeSingle();
+    if (!valid) {
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      return;
+    }
+
     const colors = evalGuess(input, secret);
     setGuesses(prev => [...prev, { word: input, colors }]);
     setLc(prev => {
