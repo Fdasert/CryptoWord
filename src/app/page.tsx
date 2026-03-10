@@ -69,36 +69,78 @@ function evalGuess(attempt: string, secret: string): Color[] {
 }
 
 // ── Demo Mode Component ───────────────────────────────────────────────────────
+const DEMO_ROUND_SECS = 120;
+
 function DemoMode({ onExit }: { onExit: () => void }) {
-  const [secret]  = useState(() => {
+  const pickWord = () => {
     const words = DEMO_WORDS.filter(w => w.length === WORD_LENGTH);
     return words[Math.floor(Math.random() * words.length)];
-  });
-  const [guesses, setGuesses] = useState<{ word: string; colors: Color[] }[]>([]);
-  const [input,   setInput]   = useState('');
-  const [shake,   setShake]   = useState(false);
-  const [won,     setWon]     = useState(false);
-  const [lc,      setLc]      = useState<Record<string, Color>>({});
-  const feedRef = useRef<HTMLDivElement>(null);
+  };
 
+  const [secret,     setSecret]     = useState(pickWord);
+  const [guesses,    setGuesses]    = useState<{ word: string; colors: Color[] }[]>([]);
+  const [input,      setInput]      = useState('');
+  const [shake,      setShake]      = useState(false);
+  const [won,        setWon]        = useState(false);
+  const [lc,         setLc]         = useState<Record<string, Color>>({});
+  const [timeLeft,   setTimeLeft]   = useState(DEMO_ROUND_SECS);
+  const [roundOver,  setRoundOver]  = useState(false);
+  const [revWord,    setRevWord]    = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const feedRef  = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<any>(null);
+
+  // auto-scroll feed
   useEffect(() => {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [guesses.length]);
 
-  const submit = useCallback(async () => {
-    if (input.length !== WORD_LENGTH || won) return;
+  // timer
+  useEffect(() => {
+    if (won || roundOver) { clearInterval(timerRef.current); return; }
+    timerRef.current = setInterval(() => {
+      setTimeLeft(p => {
+        if (p <= 1) {
+          clearInterval(timerRef.current);
+          setRoundOver(true);
+          setRevWord(secret);
+          return 0;
+        }
+        return p - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [won, roundOver, secret]);
 
-    // Validate against valid_words table (same as real game)
-    const { data: valid } = await supabase
-      .from('valid_words').select('word').eq('word', input).maybeSingle();
+  // auto-restart after round over
+  useEffect(() => {
+    if (!roundOver) return;
+    const t = setTimeout(() => {
+      setSecret(pickWord());
+      setGuesses([]);
+      setInput('');
+      setLc({});
+      setWon(false);
+      setRoundOver(false);
+      setRevWord(null);
+      setTimeLeft(DEMO_ROUND_SECS);
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [roundOver]);
+
+  const submit = useCallback(async () => {
+    if (input.length !== WORD_LENGTH || won || roundOver || submitting) return;
+    setSubmitting(true);
+    const { data: valid } = await supabase.from('valid_words').select('word').eq('word', input).maybeSingle();
     if (!valid) {
       setShake(true);
       setTimeout(() => setShake(false), 500);
+      setSubmitting(false);
       return;
     }
-
     const colors = evalGuess(input, secret);
-    setGuesses(prev => [...prev, { word: input, colors }]);
+    const newGuesses = [...guesses, { word: input, colors }];
+    setGuesses(newGuesses);
     setLc(prev => {
       const map = { ...prev };
       input.split('').forEach((l, i) => {
@@ -109,13 +151,15 @@ function DemoMode({ onExit }: { onExit: () => void }) {
     });
     if (colors.every(c => c === 'green')) {
       setWon(true);
-      trackDemoEvent('win', guesses.length + 1);
+      setRevWord(input);
+      trackDemoEvent('win', newGuesses.length);
     }
     setInput('');
-  }, [input, secret, won]);
+    setSubmitting(false);
+  }, [input, secret, won, roundOver, submitting, guesses]);
 
   const handleKey = useCallback((k: string) => {
-    if (won) return;
+    if (won || roundOver) return;
     if (k === '⌫' || k === 'Backspace') setInput(p => p.slice(0, -1));
     else if (k === 'ENTER' || k === 'Enter') {
       if (input.length === WORD_LENGTH) submit();
@@ -123,7 +167,7 @@ function DemoMode({ onExit }: { onExit: () => void }) {
     } else if (/^[A-Za-z]$/.test(k) && input.length < WORD_LENGTH) {
       setInput(p => p + k.toUpperCase());
     }
-  }, [input, won, submit]);
+  }, [input, won, roundOver, submit]);
 
   useEffect(() => {
     const fn = (e: KeyboardEvent) => handleKey(e.key);
@@ -131,110 +175,173 @@ function DemoMode({ onExit }: { onExit: () => void }) {
     return () => window.removeEventListener('keydown', fn);
   }, [handleKey]);
 
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', gap: 14 }}>
+  const pct        = timeLeft / DEMO_ROUND_SECS;
+  const timerColor = timeLeft <= 15 ? '#ef4444' : timeLeft <= 30 ? '#f59e0b' : '#22d3ee';
 
-      {/* Demo banner */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '9px 18px',
-        background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
-        borderRadius: 10, fontSize: 13, color: '#fbbf24', width: '100%', maxWidth: 600,
-      }}>
-        <span style={{ fontSize: 16 }}>🎮</span>
-        <span><b>Demo mode</b> — no real SOL, just practice. The secret word is a random 7-letter word.</span>
+  // Adapt demo guesses to GuessRow format
+  const demoRows = guesses.map((g, i) => ({
+    id: String(i), wallet_address: 'demo',
+    word_attempt: g.word, result_colors: g.colors, created_at: '',
+  }));
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+
+      {/* Round over / win overlay */}
+      {(roundOver || won) && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 50,
+          background: 'rgba(9,9,11,0.92)', backdropFilter: 'blur(8px)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: 20, animation: 'fadeIn 0.4s',
+        }}>
+          <div style={{ fontSize: 64 }}>{won ? '🎉' : '⏱'}</div>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>{won ? 'You got it!' : 'Round Over'}</div>
+          {won && (
+            <div style={{ fontSize: 15, color: '#4ade80' }}>
+              Solved in <b>{guesses.length}</b> attempt{guesses.length !== 1 ? 's' : ''}!
+            </div>
+          )}
+          {!won && <div style={{ fontSize: 15, color: '#71717a' }}>No one guessed the word in time.</div>}
+          {revWord && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: '#52525b', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>The word was</div>
+              <div style={{ display: 'flex', gap: 5, justifyContent: 'center' }}>
+                {revWord.toUpperCase().split('').map((l, i) => (
+                  <div key={i} style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: '#538d4e', borderRadius: 4, fontSize: 20, fontWeight: 700, color: '#fff' }}>{l}</div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginTop: 4 }}>
+            <button onClick={onExit} style={{
+              padding: '13px 32px', borderRadius: 8, border: 'none',
+              background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
+              color: '#fff', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: 'inherit',
+            }}>🔮 Play for Real SOL</button>
+            <div style={{ fontSize: 12, color: '#52525b' }}>
+              {roundOver && !won ? 'New demo round starting in a few seconds...' : 'Connect wallet & win real prizes'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Progress bar */}
+      <div style={{ height: 3, background: '#18181b' }}>
+        <div style={{ height: '100%', width: `${pct * 100}%`, background: timerColor, transition: 'width 1s linear, background 0.5s' }} />
+      </div>
+
+      {/* Demo stats bar */}
+      <div className='sol-stats' style={{ display: 'flex', gap: 16, padding: '9px 24px', borderBottom: '1px solid #27272a', background: '#0f0f10', fontSize: 13, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', color: '#fbbf24', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>🎮 DEMO</span>
+        <span style={{ color: '#3f3f46' }}>·</span>
+        <span style={{ color: '#71717a' }}>{guesses.length} attempt{guesses.length !== 1 ? 's' : ''}</span>
+        <span style={{ color: '#3f3f46' }}>·</span>
+        <span style={{ color: '#52525b', fontSize: 12 }}>No real SOL · practice mode · 120s rounds</span>
         <button onClick={onExit} style={{
-          marginLeft: 'auto', padding: '5px 14px', borderRadius: 6, border: '1px solid #f59e0b',
-          background: 'transparent', color: '#fbbf24', fontSize: 12, fontWeight: 700,
-          cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+          marginLeft: 'auto', padding: '4px 12px', borderRadius: 6, border: '1px solid #3f3f46',
+          background: 'transparent', color: '#71717a', fontSize: 12, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'inherit',
         }}>✕ Exit Demo</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, width: '100%', maxWidth: 600, flexWrap: 'wrap' }}>
+      {/* Two-column body — same layout as real game */}
+      <div className='sol-body' style={{ flex: 1, display: 'flex', gap: 0, justifyContent: 'center', padding: '20px 16px', flexWrap: 'wrap' }}>
 
-        {/* Guess feed */}
-        <div style={{ flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 11, color: '#52525b', letterSpacing: 1, textTransform: 'uppercase' }}>Your guesses</div>
-          <div ref={feedRef} style={{
-            background: '#18181b', border: '1px solid #27272a', borderRadius: 10,
-            padding: '10px 14px', minHeight: 260, maxHeight: 360, overflowY: 'auto',
+        {/* LEFT: Guess feed */}
+        <div className='sol-feed-col' style={{ flex: '1 1 320px', maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 16 }}>
+          <div style={{ fontSize: 11, color: '#52525b', letterSpacing: 1, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fbbf24', display: 'inline-block', animation: 'pulse 1.2s infinite' }} />
+            Your guesses
+            {guesses.length > 0 && <span style={{ color: '#3f3f46', marginLeft: 4 }}>{guesses.length} attempt{guesses.length !== 1 ? 's' : ''}</span>}
+          </div>
+          <div ref={feedRef} className='sol-feed-box' style={{
+            background: '#18181b', borderRadius: 10, padding: '10px 14px',
+            flex: 1, minHeight: 420, maxHeight: 580, overflowY: 'auto', border: '1px solid #27272a',
           }}>
             {guesses.length === 0
-              ? <div style={{ color: '#3f3f46', textAlign: 'center', marginTop: 80, fontSize: 14 }}>Type a word and press ENTER</div>
-              : guesses.map((g, i) => (
-                <div key={i} style={{
-                  display: 'flex', gap: 3, marginBottom: 5,
-                  animation: 'fadeIn 0.3s ease',
-                  background: g.colors.every(c => c === 'green') ? 'rgba(83,141,78,0.12)' : 'transparent',
-                  borderRadius: 6, padding: '3px 0',
-                }}>
-                  {g.word.split('').map((l, j) => <Tile key={j} letter={l} color={g.colors[j]} />)}
-                </div>
-              ))
+              ? <div style={{ color: '#3f3f46', textAlign: 'center', marginTop: 150, fontSize: 14 }}>Type a word and press ENTER — free in demo!</div>
+              : demoRows.map((g, i) => <GuessRow key={i} guess={g as any} isMe={true} />)
             }
+          </div>
+
+          {/* Color guide */}
+          <div style={{ background: '#111113', border: '1px solid #27272a', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 11, color: '#52525b', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Color guide</div>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              {[
+                { color: '#538d4e', label: 'Right position' },
+                { color: '#b59f3b', label: 'Wrong position' },
+                { color: '#3a3a3c', label: 'Not in word' },
+              ].map(({ color, label }) => (
+                <div key={color} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <div style={{ width: 16, height: 16, borderRadius: 3, background: color, flexShrink: 0 }} />
+                  <span style={{ color: '#71717a' }}>{label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Controls */}
-        <div style={{ flex: '0 0 260px', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+        {/* RIGHT: Timer + controls */}
+        <div className='sol-controls-col' style={{ flex: '0 0 300px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
 
-          {won ? (
-            <div style={{
-              background: 'rgba(83,141,78,0.15)', border: '1px solid #538d4e',
-              borderRadius: 14, padding: '20px 24px', textAlign: 'center', width: '100%',
-              animation: 'fadeIn 0.4s',
-            }}>
-              <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
-              <div style={{ fontWeight: 800, fontSize: 18, color: '#4ade80' }}>You got it!</div>
-              <div style={{ color: '#71717a', fontSize: 13, margin: '8px 0 4px' }}>The word was</div>
-              <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginBottom: 16 }}>
-                {secret.split('').map((l, i) => <Tile key={i} letter={l} color="green" />)}
-              </div>
-              <div style={{ fontSize: 13, color: '#71717a', marginBottom: 14 }}>
-                Solved in <b style={{ color: '#a1a1aa' }}>{guesses.length}</b> attempt{guesses.length !== 1 ? 's' : ''}
-              </div>
+          {/* Timer widget */}
+          {!won && (
+            <div className='sol-timer-widget' style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: 16,
+              padding: '18px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: '100%' }}>
+              <div style={{ fontSize: 11, color: '#52525b', textTransform: 'uppercase', letterSpacing: 1 }}>Round ends in</div>
+              <CircleTimer timeLeft={timeLeft} total={DEMO_ROUND_SECS} />
+              <div style={{ fontSize: 11, color: '#3f3f46' }}>demo round</div>
+            </div>
+          )}
+
+          {/* Won banner */}
+          {won && (
+            <div style={{ background: 'rgba(83,141,78,0.15)', border: '1px solid #538d4e', borderRadius: 16,
+              padding: '20px 24px', textAlign: 'center', width: '100%', animation: 'fadeIn 0.5s' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
+              <div style={{ color: '#4ade80', fontWeight: 700, fontSize: 18 }}>You got it!</div>
+              <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>In {guesses.length} attempt{guesses.length !== 1 ? 's' : ''}</div>
               <button onClick={onExit} style={{
-                width: '100%', padding: '12px 0', borderRadius: 8, border: 'none',
+                marginTop: 14, width: '100%', padding: '12px 0', borderRadius: 8, border: 'none',
                 background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
                 color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit',
-              }}>
-                🔮 Play for Real SOL
-              </button>
+              }}>🔮 Play for Real SOL</button>
               <div style={{ fontSize: 11, color: '#52525b', marginTop: 8 }}>Connect wallet & win real prizes</div>
             </div>
-          ) : (
-            <>
+          )}
+
+          {/* Input + submit */}
+          {!won && !roundOver && (
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 11, alignItems: 'center' }}>
               <InputRow value={input} shake={shake} />
-              <button onClick={submit} disabled={input.length !== WORD_LENGTH} style={{
-                width: '100%', padding: '13px 0', borderRadius: 8, border: 'none',
-                background: input.length === WORD_LENGTH
-                  ? 'linear-gradient(135deg,#059669,#10b981)'
-                  : '#27272a',
-                color: input.length === WORD_LENGTH ? '#fff' : '#52525b',
-                fontWeight: 700, fontSize: 15, cursor: input.length === WORD_LENGTH ? 'pointer' : 'not-allowed',
-                fontFamily: 'inherit', transition: 'all 0.2s',
-                boxShadow: input.length === WORD_LENGTH ? '0 0 20px rgba(16,185,129,0.25)' : 'none',
+              <button onClick={submit} disabled={input.length !== WORD_LENGTH || submitting} style={{
+                width: '100%', padding: '15px 0', borderRadius: 8, border: 'none',
+                background: input.length === WORD_LENGTH && !submitting ? 'linear-gradient(135deg,#059669,#10b981)' : '#27272a',
+                color: input.length === WORD_LENGTH && !submitting ? '#fff' : '#52525b',
+                fontWeight: 700, fontSize: 16,
+                cursor: input.length === WORD_LENGTH && !submitting ? 'pointer' : 'not-allowed',
+                transition: 'all 0.2s',
+                boxShadow: input.length === WORD_LENGTH && !submitting ? '0 0 20px rgba(16,185,129,0.3)' : 'none',
               }}>
-                ✅ Submit Guess
+                {submitting ? '⏳ Checking...' : '✅ SUBMIT GUESS'}
               </button>
-              <div style={{ fontSize: 12, color: '#52525b', textAlign: 'center' }}>
-                {guesses.length} attempt{guesses.length !== 1 ? 's' : ''} · no cost in demo
+              <div style={{ fontSize: 11, color: '#3f3f46', textAlign: 'center', lineHeight: 1.7 }}>
+                Free in demo · unlimited attempts<br />
+                <span style={{ color: '#52525b' }}>Real game: 0.01 SOL per attempt</span>
               </div>
-            </>
+            </div>
           )}
 
           <Keyboard lc={lc} onKey={handleKey} />
 
-          {/* CTA to real game */}
-          {!won && (
-            <button onClick={onExit} style={{
-              width: '100%', padding: '12px 0', borderRadius: 8, border: '1px solid #7c3aed',
-              background: 'rgba(124,58,237,0.1)', color: '#a78bfa',
-              fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
-              transition: 'all 0.2s',
-            }}>
-              🔮 Play for Real SOL →
-            </button>
-          )}
+          <button onClick={onExit} style={{
+            width: '100%', padding: '12px 0', borderRadius: 8, border: '1px solid #7c3aed',
+            background: 'rgba(124,58,237,0.1)', color: '#a78bfa',
+            fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
+          }}>🔮 Play for Real SOL →</button>
         </div>
       </div>
     </div>
@@ -860,19 +967,19 @@ const AppContent = () => {
         </div>
       )}
 
-      {/* Progress bar */}
-      <div style={{ height:3, background:'#18181b' }}>
+      {/* Progress bar — hidden in demo (DemoMode has its own) */}
+      {!demoMode && <div style={{ height:3, background:'#18181b' }}>
         {isActive && (
           <div style={{ height:'100%', width:`${Math.min(100,(timeLeft/totalSecs)*100)}%`,
             background: timerColor, transition:'width 1s linear, background 0.5s' }}/>
         )}
-      </div>
+      </div>}
 
       {/* Demo Mode */}
       {demoMode && <DemoMode onExit={() => setDemoMode(false)} />}
 
-      {/* Stats */}
-      <div className='sol-stats' style={{ display:'flex', gap:20, padding:'9px 24px', borderBottom:'1px solid #27272a', background:'#0f0f10', fontSize:13, alignItems:'center', flexWrap:'wrap' }}>
+      {/* Stats — hidden in demo (DemoMode has its own stats bar) */}
+      {!demoMode && <div className='sol-stats' style={{ display:'flex', gap:20, padding:'9px 24px', borderBottom:'1px solid #27272a', background:'#0f0f10', fontSize:13, alignItems:'center', flexWrap:'wrap' }}>
         <span>💰 <b style={{ color:'#fbbf24' }}>{(round?.prize_pool ?? 0).toFixed(4)} SOL</b> prize pool</span>
         <span style={{ color:'#3f3f46' }}>·</span>
         <span style={{ color:'#71717a' }}>0.01 SOL / attempt · unlimited tries</span>
@@ -907,7 +1014,7 @@ const AppContent = () => {
             {payoutSecs > 0 && <span style={{ color:'#6b7280' }}> · payout in {payoutSecs}s</span>}
           </span>
         )}
-      </div>
+      </div>}
 
       {/* Trust Bar */}
       {!demoMode && (
