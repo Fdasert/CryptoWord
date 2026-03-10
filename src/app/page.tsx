@@ -68,6 +68,416 @@ function evalGuess(attempt: string, secret: string): Color[] {
   return res;
 }
 
+// ── Demo Choice Screen ────────────────────────────────────────────────────────
+function DemoChoiceScreen({ onSolo, onMulti, onExit }: { onSolo: () => void; onMulti: () => void; onExit: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 60,
+      background: 'rgba(9,9,11,0.96)', backdropFilter: 'blur(12px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 16, animation: 'fadeIn 0.3s',
+    }}>
+      <div style={{
+        background: '#111113', border: '1px solid #27272a', borderRadius: 20,
+        padding: '36px 28px', maxWidth: 460, width: '100%', textAlign: 'center',
+        animation: 'modalIn 0.3s ease',
+      }}>
+        {/* Title */}
+        <div style={{ marginBottom: 8 }}>
+          <span style={{ fontSize: 26, fontWeight: 800 }}>WORD</span>
+          <span style={{ fontSize: 26, fontWeight: 800, color: '#a78bfa' }}>GUESS</span>
+        </div>
+        <div style={{ fontSize: 13, color: '#52525b', marginBottom: 32 }}>
+          🎮 Demo mode — free, no wallet needed
+        </div>
+
+        {/* Choice cards */}
+        <div style={{ display: 'flex', gap: 14, marginBottom: 24, flexWrap: 'wrap' }}>
+
+          {/* Solo */}
+          <button onClick={onSolo} style={{
+            flex: '1 1 160px', padding: '22px 16px', borderRadius: 14,
+            border: '2px solid #27272a', background: '#18181b',
+            color: '#fff', cursor: 'pointer', fontFamily: 'inherit',
+            textAlign: 'center', transition: 'all 0.2s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#538d4e'; e.currentTarget.style.background = 'rgba(83,141,78,0.08)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = '#27272a'; e.currentTarget.style.background = '#18181b'; }}
+          >
+            <div style={{ fontSize: 36, marginBottom: 10 }}>🧩</div>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>Solo</div>
+            <div style={{ fontSize: 12, color: '#71717a', lineHeight: 1.6 }}>
+              Practice alone<br />
+              120-second rounds<br />
+              Word validates same as real game
+            </div>
+          </button>
+
+          {/* Multiplayer */}
+          <button onClick={onMulti} style={{
+            flex: '1 1 160px', padding: '22px 16px', borderRadius: 14,
+            border: '2px solid #27272a', background: '#18181b',
+            color: '#fff', cursor: 'pointer', fontFamily: 'inherit',
+            textAlign: 'center', transition: 'all 0.2s',
+            position: 'relative', overflow: 'hidden',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.background = 'rgba(124,58,237,0.08)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = '#27272a'; e.currentTarget.style.background = '#18181b'; }}
+          >
+            <div style={{
+              position: 'absolute', top: 10, right: 10,
+              background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
+              color: '#fff', fontSize: 9, fontWeight: 800, letterSpacing: 1,
+              padding: '2px 7px', borderRadius: 20, textTransform: 'uppercase',
+            }}>NEW</div>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>🌐</div>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>Multiplayer</div>
+            <div style={{ fontSize: 12, color: '#71717a', lineHeight: 1.6 }}>
+              Real players, shared round<br />
+              Live feed of all guesses<br />
+              Identical to real game
+            </div>
+          </button>
+        </div>
+
+        {/* CTA real game */}
+        <div style={{ padding: '14px 16px', background: 'rgba(124,58,237,0.07)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 12, marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: '#71717a', marginBottom: 8 }}>Want to win real SOL?</div>
+          <button onClick={onExit} style={{
+            width: '100%', padding: '11px 0', borderRadius: 8, border: 'none',
+            background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
+            color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+          }}>🔮 Connect Wallet & Play for Real</button>
+        </div>
+
+        <button onClick={onExit} style={{
+          background: 'transparent', border: 'none', color: '#3f3f46',
+          fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+        }}>✕ Close</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Demo Multiplayer Mode ─────────────────────────────────────────────────────
+interface DemoRound { id: string; started_at: string; ends_at: string; status: string; }
+interface DemoGuess { id: string; session_id: string; word_attempt: string; result_colors: Color[]; is_winner: boolean; created_at: string; }
+
+function DemoMultiplayer({ onExit }: { onExit: () => void }) {
+  const [demoRound,    setDemoRound]    = useState<DemoRound | null>(null);
+  const [allGuesses,   setAllGuesses]   = useState<DemoGuess[]>([]);
+  const [input,        setInput]        = useState('');
+  const [shake,        setShake]        = useState(false);
+  const [busy,         setBusy]         = useState(false);
+  const [timeLeft,     setTimeLeft]     = useState(0);
+  const [roundOver,    setRoundOver]    = useState(false);
+  const [winner,       setWinner]       = useState<string | null>(null);
+  const [status,       setStatus]       = useState('');
+  const [lc,           setLc]           = useState<Record<string, Color>>({});
+  const [loading,      setLoading]      = useState(true);
+  const feedRef  = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<any>(null);
+  const sid = getSessionId();
+
+  // Load/create demo round
+  const loadRound = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res  = await fetch(edgeFn('get-demo-round'), { method: 'POST', headers: apiH() });
+      const data = await res.json();
+      if (data.success) {
+        const r = data.round as DemoRound;
+        setDemoRound(r);
+        setRoundOver(false);
+        setWinner(null);
+        setInput('');
+        setLc({});
+        // Load existing guesses for this round
+        const { data: guesses } = await supabase
+          .from('demo_guesses')
+          .select('*')
+          .eq('demo_round_id', r.id)
+          .order('created_at', { ascending: true });
+        setAllGuesses((guesses ?? []) as DemoGuess[]);
+        // Check if already won
+        const won = (guesses ?? []).find((g: any) => g.is_winner);
+        if (won) { setWinner(won.session_id); setRoundOver(true); }
+      }
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadRound(); }, [loadRound]);
+
+  // Timer
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (!demoRound || roundOver) return;
+    const tick = () => {
+      const secs = Math.max(0, Math.floor((new Date(demoRound.ends_at).getTime() - Date.now()) / 1000));
+      setTimeLeft(secs);
+      if (secs === 0) {
+        clearInterval(timerRef.current);
+        setRoundOver(true);
+        // Auto-start new round after 5s
+        setTimeout(() => loadRound(), 5000);
+      }
+    };
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [demoRound?.id, roundOver]);
+
+  // Realtime — new guesses
+  useEffect(() => {
+    if (!demoRound) return;
+    const ch = supabase.channel(`demo:${demoRound.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'demo_guesses', filter: `demo_round_id=eq.${demoRound.id}` },
+        payload => {
+          const g = payload.new as DemoGuess;
+          setAllGuesses(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g]);
+          if (g.is_winner) { setWinner(g.session_id); setRoundOver(true); setTimeout(() => loadRound(), 5000); }
+          // Update letter colors for my guesses
+          if (g.session_id === sid) {
+            setLc(prev => {
+              const map = { ...prev };
+              g.word_attempt.split('').forEach((l, i) => {
+                const c = g.result_colors[i], p = map[l];
+                if (c === 'green' || !p || (p === 'gray' && c === 'yellow')) map[l] = c;
+              });
+              return map;
+            });
+          }
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [demoRound?.id, sid]);
+
+  // Auto-scroll feed
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [allGuesses.length]);
+
+  // Submit guess
+  const submitGuess = useCallback(async () => {
+    if (!demoRound || input.length !== WORD_LENGTH || busy || roundOver) return;
+    setBusy(true);
+    setStatus('Checking...');
+    try {
+      const res  = await fetch(edgeFn('demo-check-guess'), {
+        method: 'POST', headers: apiH(),
+        body: JSON.stringify({ demo_round_id: demoRound.id, session_id: sid, word_attempt: input }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        if (data.not_a_word) {
+          setShake(true); setTimeout(() => setShake(false), 500);
+          setStatus('❌ Not a valid word');
+        } else if (data.error?.includes('expired')) {
+          setStatus('Round expired, loading next...');
+          loadRound();
+        } else {
+          setStatus(`⚠ ${data.error}`);
+        }
+        setBusy(false); return;
+      }
+      setInput('');
+      setStatus(data.is_winner ? '🎉 You got it!' : `Attempt done!`);
+    } catch (e: any) {
+      setStatus(`Error: ${e?.message}`);
+    }
+    setBusy(false);
+  }, [demoRound, input, busy, roundOver, sid]);
+
+  const handleKey = useCallback((k: string) => {
+    if (busy || roundOver) return;
+    if (k === '⌫' || k === 'Backspace') setInput(p => p.slice(0, -1));
+    else if (k === 'ENTER' || k === 'Enter') {
+      if (input.length === WORD_LENGTH) submitGuess();
+      else { setShake(true); setTimeout(() => setShake(false), 500); }
+    } else if (/^[A-Za-z]$/.test(k) && input.length < WORD_LENGTH) {
+      setInput(p => p + k.toUpperCase());
+    }
+  }, [busy, roundOver, input, submitGuess]);
+
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => handleKey(e.key);
+    window.addEventListener('keydown', fn);
+    return () => window.removeEventListener('keydown', fn);
+  }, [handleKey]);
+
+  const totalSecs  = demoRound ? Math.max(1, Math.round((new Date(demoRound.ends_at).getTime() - new Date(demoRound.started_at).getTime()) / 1000)) : 120;
+  const timerColor = timeLeft <= 15 ? '#ef4444' : timeLeft <= 30 ? '#f59e0b' : '#22d3ee';
+  const myGuesses  = allGuesses.filter(g => g.session_id === sid);
+  const iWon       = winner === sid;
+
+  if (loading) return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: '#52525b' }}>
+      <div style={{ width: 32, height: 32, border: '3px solid #27272a', borderTopColor: '#a78bfa', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      Loading multiplayer demo...
+    </div>
+  );
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+
+      {/* Round over overlay */}
+      {roundOver && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 50,
+          background: 'rgba(9,9,11,0.92)', backdropFilter: 'blur(8px)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: 20, animation: 'fadeIn 0.4s',
+        }}>
+          <div style={{ fontSize: 64 }}>{iWon ? '🎉' : winner ? '🏆' : '⏱'}</div>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>
+            {iWon ? 'You won!' : winner ? `${winner.slice(0,6)}... won!` : 'Round Over'}
+          </div>
+          {!winner && <div style={{ fontSize: 15, color: '#71717a' }}>No one guessed the word in time.</div>}
+          {iWon && <div style={{ fontSize: 15, color: '#4ade80' }}>Solved in {myGuesses.length} attempt{myGuesses.length !== 1 ? 's' : ''}!</div>}
+          <div style={{ fontSize: 14, color: '#52525b' }}>New demo round starting in 5 seconds...</div>
+          <button onClick={onExit} style={{
+            padding: '13px 32px', borderRadius: 8, border: 'none',
+            background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
+            color: '#fff', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: 'inherit',
+          }}>🔮 Play for Real SOL</button>
+        </div>
+      )}
+
+      {/* Progress bar */}
+      <div style={{ height: 3, background: '#18181b' }}>
+        <div style={{ height: '100%', width: `${Math.min(100, (timeLeft / totalSecs) * 100)}%`, background: timerColor, transition: 'width 1s linear, background 0.5s' }} />
+      </div>
+
+      {/* Stats bar */}
+      <div className='sol-stats' style={{ display: 'flex', gap: 16, padding: '9px 24px', borderBottom: '1px solid #27272a', background: '#0f0f10', fontSize: 13, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.4)', color: '#a78bfa', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>🌐 MULTIPLAYER DEMO</span>
+        <span style={{ color: '#3f3f46' }}>·</span>
+        <span style={{ color: '#71717a' }}>{allGuesses.length} total guess{allGuesses.length !== 1 ? 'es' : ''}</span>
+        <span style={{ color: '#3f3f46' }}>·</span>
+        <span style={{ color: '#52525b', fontSize: 12 }}>Free · real game word · real players</span>
+        <button onClick={onExit} style={{
+          marginLeft: 'auto', padding: '4px 12px', borderRadius: 6, border: '1px solid #3f3f46',
+          background: 'transparent', color: '#71717a', fontSize: 12, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}>✕ Exit Demo</button>
+      </div>
+
+      {/* Body — same 2-column layout */}
+      <div className='sol-body' style={{ flex: 1, display: 'flex', gap: 0, justifyContent: 'center', padding: '20px 16px', flexWrap: 'wrap' }}>
+
+        {/* LEFT: Live feed of ALL players */}
+        <div className='sol-feed-col' style={{ flex: '1 1 320px', maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 16 }}>
+          <div style={{ fontSize: 11, color: '#52525b', letterSpacing: 1, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', display: 'inline-block', animation: 'pulse 1.2s infinite' }} />
+            Live feed · all players
+            {allGuesses.length > 0 && <span style={{ color: '#3f3f46', marginLeft: 4 }}>{allGuesses.length} guess{allGuesses.length !== 1 ? 'es' : ''}</span>}
+          </div>
+          <div ref={feedRef} className='sol-feed-box' style={{
+            background: '#18181b', borderRadius: 10, padding: '10px 14px',
+            flex: 1, minHeight: 420, maxHeight: 580, overflowY: 'auto', border: '1px solid #27272a',
+          }}>
+            {allGuesses.length === 0
+              ? <div style={{ color: '#3f3f46', textAlign: 'center', marginTop: 150, fontSize: 14 }}>No guesses yet — be first!</div>
+              : allGuesses.map(g => (
+                <div key={g.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0',
+                  borderRadius: 6, background: g.is_winner ? 'rgba(83,141,78,0.12)' : 'transparent',
+                  animation: 'fadeIn 0.35s ease',
+                }}>
+                  <span style={{ fontSize: 11, fontFamily: 'monospace', minWidth: 80, textAlign: 'right',
+                    color: g.is_winner ? '#4ade80' : g.session_id === sid ? '#a78bfa' : '#6b7280',
+                    fontWeight: g.session_id === sid || g.is_winner ? 700 : 400,
+                  }}>
+                    {g.is_winner ? '🏆 ' : ''}{g.session_id === sid ? 'YOU' : g.session_id.slice(0, 4) + '..' + g.session_id.slice(-4)}
+                  </span>
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    {g.word_attempt.split('').map((l, i) => <Tile key={i} letter={l} color={g.result_colors[i] ?? 'gray'} />)}
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+
+          {/* Color guide */}
+          <div style={{ background: '#111113', border: '1px solid #27272a', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 11, color: '#52525b', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Color guide</div>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              {[{ color: '#538d4e', label: 'Right position' }, { color: '#b59f3b', label: 'Wrong position' }, { color: '#3a3a3c', label: 'Not in word' }].map(({ color, label }) => (
+                <div key={color} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <div style={{ width: 16, height: 16, borderRadius: 3, background: color, flexShrink: 0 }} />
+                  <span style={{ color: '#71717a' }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: Timer + controls */}
+        <div className='sol-controls-col' style={{ flex: '0 0 300px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+
+          {/* Timer */}
+          {demoRound && !roundOver && (
+            <div className='sol-timer-widget' style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: 16,
+              padding: '18px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: '100%' }}>
+              <div style={{ fontSize: 11, color: '#52525b', textTransform: 'uppercase', letterSpacing: 1 }}>Round ends in</div>
+              <CircleTimer timeLeft={timeLeft} total={totalSecs} />
+              <div style={{ fontSize: 11, color: '#3f3f46' }}>demo · {demoRound.id.slice(0, 8)}</div>
+            </div>
+          )}
+
+          {/* Won banner */}
+          {iWon && (
+            <div style={{ background: 'rgba(83,141,78,0.15)', border: '1px solid #538d4e', borderRadius: 16,
+              padding: '20px 24px', textAlign: 'center', width: '100%', animation: 'fadeIn 0.5s' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
+              <div style={{ color: '#4ade80', fontWeight: 700, fontSize: 18 }}>You got it!</div>
+              <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>In {myGuesses.length} attempt{myGuesses.length !== 1 ? 's' : ''}</div>
+              <button onClick={onExit} style={{
+                marginTop: 14, width: '100%', padding: '12px 0', borderRadius: 8, border: 'none',
+                background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
+                color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit',
+              }}>🔮 Play for Real SOL</button>
+            </div>
+          )}
+
+          {/* Input + submit */}
+          {!roundOver && !iWon && (
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 11, alignItems: 'center' }}>
+              <InputRow value={input} shake={shake} />
+              <button onClick={submitGuess} disabled={input.length !== WORD_LENGTH || busy} style={{
+                width: '100%', padding: '15px 0', borderRadius: 8, border: 'none',
+                background: input.length === WORD_LENGTH && !busy ? 'linear-gradient(135deg,#059669,#10b981)' : '#27272a',
+                color: input.length === WORD_LENGTH && !busy ? '#fff' : '#52525b',
+                fontWeight: 700, fontSize: 16,
+                cursor: input.length === WORD_LENGTH && !busy ? 'pointer' : 'not-allowed',
+                transition: 'all 0.2s',
+                boxShadow: input.length === WORD_LENGTH && !busy ? '0 0 20px rgba(16,185,129,0.3)' : 'none',
+              }}>
+                {busy ? '⏳ Checking...' : '✅ SUBMIT GUESS'}
+              </button>
+              {status && <div style={{ fontSize: 13, color: '#a1a1aa', textAlign: 'center' }}>{status}</div>}
+              <div style={{ fontSize: 11, color: '#3f3f46', textAlign: 'center', lineHeight: 1.7 }}>
+                Free in demo · guesses visible to all<br />
+                <span style={{ color: '#52525b' }}>Real game: 0.01 SOL per attempt</span>
+              </div>
+            </div>
+          )}
+
+          <Keyboard lc={lc} onKey={handleKey} />
+
+          <button onClick={onExit} style={{
+            width: '100%', padding: '12px 0', borderRadius: 8, border: '1px solid #7c3aed',
+            background: 'rgba(124,58,237,0.1)', color: '#a78bfa',
+            fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
+          }}>🔮 Play for Real SOL →</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Demo Mode Component ───────────────────────────────────────────────────────
 const DEMO_ROUND_SECS = 120;
 
@@ -525,7 +935,7 @@ const AppContent = () => {
   const [revealedWord, setRevealedWord] = useState<string|null>(null);
   const [showHowTo,    setShowHowTo]    = useState(false);
   const [lastWinners,  setLastWinners]  = useState<{wallet:string; word:string; pool:number; ended_at:string}[]>([]);
-  const [demoMode,     setDemoMode]     = useState(false);
+  const [demoMode,     setDemoMode]     = useState<null | 'choice' | 'solo' | 'multi'>(null);
   const [onlineCount,  setOnlineCount]  = useState<number | null>(null);
 
   const timerRef    = useRef<any>(null);
@@ -976,7 +1386,15 @@ const AppContent = () => {
       </div>}
 
       {/* Demo Mode */}
-      {demoMode && <DemoMode onExit={() => setDemoMode(false)} />}
+      {demoMode === 'choice' && (
+        <DemoChoiceScreen
+          onSolo={() => { setDemoMode('solo'); trackDemoEvent('start'); }}
+          onMulti={() => { setDemoMode('multi'); trackDemoEvent('start'); }}
+          onExit={() => setDemoMode(null)}
+        />
+      )}
+      {demoMode === 'solo'  && <DemoMode onExit={() => setDemoMode(null)} />}
+      {demoMode === 'multi' && <DemoMultiplayer onExit={() => setDemoMode(null)} />}
 
       {/* Stats — hidden in demo (DemoMode has its own stats bar) */}
       {!demoMode && <div className='sol-stats' style={{ display:'flex', gap:20, padding:'9px 24px', borderBottom:'1px solid #27272a', background:'#0f0f10', fontSize:13, alignItems:'center', flexWrap:'wrap' }}>
@@ -995,14 +1413,14 @@ const AppContent = () => {
           </>
         )}
         {!publicKey && !demoMode && (
-          <button onClick={() => { setDemoMode(true); trackDemoEvent('start'); }} style={{
+          <button onClick={() => { setDemoMode('choice'); trackDemoEvent('start'); }} style={{
             marginLeft:'auto', padding:'4px 12px', borderRadius:6, border:'1px solid rgba(245,158,11,0.4)',
             background:'rgba(245,158,11,0.07)', color:'#fbbf24', fontSize:12, fontWeight:700,
             cursor:'pointer', fontFamily:'inherit',
           }}>🎮 Try Demo</button>
         )}
         {demoMode && (
-          <button onClick={() => setDemoMode(false)} style={{
+          <button onClick={() => setDemoMode(null)} style={{
             marginLeft:'auto', padding:'4px 12px', borderRadius:6, border:'1px solid #3f3f46',
             background:'transparent', color:'#71717a', fontSize:12, fontWeight:700,
             cursor:'pointer', fontFamily:'inherit',
@@ -1128,7 +1546,7 @@ const AppContent = () => {
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:16, width:'100%' }}>
               <div style={{ color:'#52525b', fontSize:14, textAlign:'center' }}>Connect wallet to play for real</div>
               <div style={{ color:'#3f3f46', fontSize:12 }}>— or —</div>
-              <button onClick={() => { setDemoMode(true); trackDemoEvent('start'); }} style={{
+              <button onClick={() => { setDemoMode('choice'); trackDemoEvent('start'); }} style={{
                 width:'100%', padding:'13px 0', borderRadius:8, border:'1px solid #f59e0b',
                 background:'rgba(245,158,11,0.08)', color:'#fbbf24',
                 fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:'inherit',
