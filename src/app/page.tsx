@@ -909,6 +909,29 @@ const AppContent = () => {
         )}
       </div>
 
+      {/* Trust Bar */}
+      {!demoMode && (
+        <div style={{ display:'flex', gap:16, padding:'6px 24px', borderBottom:'1px solid #1f1f23', background:'#0a0a0b', fontSize:11, alignItems:'center', flexWrap:'wrap', color:'#52525b' }}>
+          <span>🔒 Provably fair</span>
+          <span style={{ color:'#27272a' }}>·</span>
+          <a href="https://solscan.io/account/6ei4xUpeKjKs3uHVkmbxcGvhczWrW8QJ2zTf9a4qUHfe" target="_blank" rel="noopener noreferrer"
+            style={{ color:'#52525b', textDecoration:'none' }}
+            onMouseEnter={e => (e.currentTarget.style.color='#a1a1aa')}
+            onMouseLeave={e => (e.currentTarget.style.color='#52525b')}>
+            🏦 Prize pool wallet ↗
+          </a>
+          <span style={{ color:'#27272a' }}>·</span>
+          <a href="https://github.com/Fdasert/CryptoWord" target="_blank" rel="noopener noreferrer"
+            style={{ color:'#52525b', textDecoration:'none' }}
+            onMouseEnter={e => (e.currentTarget.style.color='#a1a1aa')}
+            onMouseLeave={e => (e.currentTarget.style.color='#52525b')}>
+            📂 Open source ↗
+          </a>
+          <span style={{ color:'#27272a' }}>·</span>
+          <span>Winners paid on-chain · no middleman</span>
+        </div>
+      )}
+
       {/* Body: two-column */}
       {!demoMode && <div className='sol-body' style={{ flex:1, display:'flex', gap:0, justifyContent:'center', padding:'20px 16px', flexWrap:'wrap' }}>
 
