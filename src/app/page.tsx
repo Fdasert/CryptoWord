@@ -183,7 +183,7 @@ function DemoMultiplayer({ onExit }: { onExit: () => void }) {
   const loadRound = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch(edgeFn('get-demo-round'), { method: 'POST', headers: apiH() });
+      const res  = await fetch(edgeFn('demo-get-round'), { method: 'POST', headers: apiH() });
       const data = await res.json();
       if (data.success) {
         const r = data.round as DemoRound;
@@ -196,7 +196,7 @@ function DemoMultiplayer({ onExit }: { onExit: () => void }) {
         const { data: guesses } = await supabase
           .from('demo_guesses')
           .select('*')
-          .eq('demo_round_id', r.id)
+          .eq('round_id', r.id)
           .order('created_at', { ascending: true });
         setAllGuesses((guesses ?? []) as DemoGuess[]);
         // Check if already won
@@ -232,7 +232,7 @@ function DemoMultiplayer({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     if (!demoRound) return;
     const ch = supabase.channel(`demo:${demoRound.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'demo_guesses', filter: `demo_round_id=eq.${demoRound.id}` },
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'demo_guesses', filter: `round_id=eq.${demoRound.id}` },
         payload => {
           const g = payload.new as DemoGuess;
           setAllGuesses(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g]);
@@ -282,7 +282,20 @@ function DemoMultiplayer({ onExit }: { onExit: () => void }) {
         setBusy(false); return;
       }
       setInput('');
-      setStatus(data.is_winner ? '🎉 You got it!' : `Attempt done!`);
+      // Optimistic update — add guess immediately without waiting for Realtime
+      if (data.guess) {
+        const g = data.guess as DemoGuess;
+        setAllGuesses(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g]);
+        setLc(prev => {
+          const map = { ...prev };
+          g.word_attempt.split('').forEach((l, i) => {
+            const c = g.result_colors[i], p = map[l];
+            if (c === 'green' || !p || (p === 'gray' && c === 'yellow')) map[l] = c;
+          });
+          return map;
+        });
+      }
+      setStatus(data.is_winner ? '🎉 You got it!' : '');
     } catch (e: any) {
       setStatus(`Error: ${e?.message}`);
     }
