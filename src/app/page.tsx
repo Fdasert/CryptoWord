@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 const GAME_WALLET    = '6ei4xUpeKjKs3uHVkmbxcGvhczWrW8QJ2zTf9a4qUHfe';
 const ADMIN_WALLET   = 'QVWqd5fSxaFfT1cdxcmNYofqKFM8tFBJMw97kwRWKpS'; // owner wallet
-const HELIUS_RPC     = 'https://mainnet.helius-rpc.com/?api-key=676b709c-1c3e-4fba-a47d-5cd3f2e78283';
+const HELIUS_RPC     = process.env.NEXT_PUBLIC_HELIUS_RPC!;
 const SUPABASE_URL   = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const WORD_LENGTH    = 7;
