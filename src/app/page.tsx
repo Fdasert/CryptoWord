@@ -1085,19 +1085,19 @@ const AppContent = () => {
             }
           });
 
-        // Fallback polling: keep trying every 3s until new round appears
+        // Fallback polling: keep trying every 5s until new round appears
         let attempts = 0;
         const poll = () => {
           attempts++;
           supabase.from('active_round').select('*').maybeSingle().then(({ data }) => {
             if (data) {
               loadRound(); // new round found — load it
-            } else if (attempts < 30) {
-              setTimeout(poll, 3000); // keep polling up to ~90s
+            } else if (attempts < 18) {
+              setTimeout(poll, 5000); // keep polling up to ~90s
             }
           });
         };
-        setTimeout(poll, 3000);
+        setTimeout(poll, 5000);
       }
     }, 1000);
     return () => clearInterval(timerRef.current);
