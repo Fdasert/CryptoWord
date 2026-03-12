@@ -1085,19 +1085,19 @@ const AppContent = () => {
             }
           });
 
-        // Fallback polling: keep trying every 8s until new round appears
+        // Fallback polling: keep trying every 3s until new round appears
         let attempts = 0;
         const poll = () => {
           attempts++;
           supabase.from('active_round').select('*').maybeSingle().then(({ data }) => {
             if (data) {
               loadRound(); // new round found — load it
-            } else if (attempts < 10) {
-              setTimeout(poll, 8000); // keep polling up to ~80s
+            } else if (attempts < 30) {
+              setTimeout(poll, 3000); // keep polling up to ~90s
             }
           });
         };
-        setTimeout(poll, 8000);
+        setTimeout(poll, 3000);
       }
     }, 1000);
     return () => clearInterval(timerRef.current);
@@ -1379,13 +1379,20 @@ const AppContent = () => {
             }
           </div>
           <div style={{
-            display:'flex', flexDirection:'column', alignItems:'center', gap:6,
+            display:'flex', flexDirection:'column', alignItems:'center', gap:10,
           }}>
-            <div style={{
-              width:12, height:12, borderRadius:'50%', background:'#7c3aed',
-              animation:'pulse 1.2s infinite',
-            }}/>
-            <div style={{fontSize:13,color:'#52525b',letterSpacing:1}}>NEXT ROUND STARTING...</div>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <div style={{
+                width:10, height:10, borderRadius:'50%', background:'#7c3aed',
+                animation:'pulse 1.2s infinite',
+              }}/>
+              <div style={{fontSize:13,color:'#52525b',letterSpacing:1}}>NEXT ROUND STARTING...</div>
+            </div>
+            <button onClick={() => loadRound()} style={{
+              marginTop:4, padding:'8px 20px', fontSize:13, color:'#a1a1aa',
+              background:'transparent', border:'1px solid #3f3f46', borderRadius:8,
+              cursor:'pointer',
+            }}>↻ Refresh</button>
           </div>
         </div>
       )}
