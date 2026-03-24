@@ -1315,13 +1315,16 @@ const AppContent = () => {
         @media(max-width:640px){
           .sol-header { padding: 10px 14px !important; }
           .sol-logo-sub { display: none !important; }
-          .sol-stats { padding: 8px 14px !important; gap: 10px !important; font-size: 12px !important; }
-          .sol-body { padding: 12px 10px !important; flex-direction: column !important; }
-          .sol-feed-col { padding-right: 0 !important; max-width: 100% !important; }
-          .sol-feed-box { min-height: 220px !important; max-height: 280px !important; }
-          .sol-controls-col { flex: 1 1 auto !important; width: 100% !important; }
+          .sol-stats { padding: 8px 14px !important; gap: 8px !important; font-size: 12px !important; flex-wrap: wrap !important; }
+          .sol-body { padding: 10px 10px 24px !important; flex-direction: column !important; gap: 12px !important; }
+          .sol-feed-col { padding-right: 0 !important; max-width: 100% !important; min-width: 0 !important; }
+          .sol-feed-box { min-height: 180px !important; max-height: 240px !important; }
+          .sol-controls-col { flex: 1 1 auto !important; width: 100% !important; min-width: 0 !important; }
           .sol-timer-widget { padding: 12px 16px !important; }
-          .wallet-adapter-button { font-size: 12px !important; height: 34px !important; padding: 0 10px !important; }
+          .sol-demo-cta { padding: 12px 10px !important; }
+          .sol-demo-btn { font-size: 15px !important; padding: 13px 0 !important; }
+          .wallet-adapter-button { width: 100% !important; justify-content: center !important; font-size: 14px !important; height: 44px !important; padding: 0 16px !important; }
+          .wallet-adapter-button-trigger { width: 100% !important; }
         }
       `}</style>
 
@@ -1434,8 +1437,9 @@ const AppContent = () => {
         )}
         {!publicKey && !demoMode && (
           <button onClick={() => { setDemoMode('choice'); trackDemoEvent('start'); }} style={{
-            marginLeft:'auto', padding:'4px 12px', borderRadius:6, border:'1px solid rgba(245,158,11,0.4)',
-            background:'rgba(245,158,11,0.07)', color:'#fbbf24', fontSize:12, fontWeight:700,
+            marginLeft:'auto', padding:'5px 14px', borderRadius:6, border:'none',
+            background:'linear-gradient(135deg,#d97706,#f59e0b)',
+            color:'#000', fontSize:12, fontWeight:800,
             cursor:'pointer', fontFamily:'inherit',
           }}>🎮 Try Demo</button>
         )}
@@ -1563,18 +1567,31 @@ const AppContent = () => {
 
           {/* Play controls */}
           {!publicKey ? (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:16, width:'100%' }}>
-              <div style={{ color:'#52525b', fontSize:14, textAlign:'center' }}>Connect wallet to play for real</div>
-              <div style={{ color:'#3f3f46', fontSize:12 }}>— or —</div>
-              <button onClick={() => { setDemoMode('choice'); trackDemoEvent('start'); }} style={{
-                width:'100%', padding:'13px 0', borderRadius:8, border:'1px solid #f59e0b',
-                background:'rgba(245,158,11,0.08)', color:'#fbbf24',
-                fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:'inherit',
-                transition:'all 0.2s',
-              }}>
-                🎮 Try Demo — Free
-              </button>
-              <div style={{ fontSize:12, color:'#52525b', textAlign:'center' }}>No wallet needed · no real SOL</div>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12, padding:16, width:'100%' }}>
+              {/* Demo — primary CTA */}
+              <div className='sol-demo-cta' style={{ width:'100%', background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.25)', borderRadius:12, padding:'16px 14px', textAlign:'center' }}>
+                <div style={{ fontSize:12, color:'#92400e', letterSpacing:1, textTransform:'uppercase', fontWeight:700, marginBottom:8 }}>👋 New here? Start free</div>
+                <button className='sol-demo-btn' onClick={() => { setDemoMode('choice'); trackDemoEvent('start'); }} style={{
+                  width:'100%', padding:'14px 0', borderRadius:8, border:'none',
+                  background:'linear-gradient(135deg,#d97706,#f59e0b)',
+                  color:'#000', fontWeight:800, fontSize:16, cursor:'pointer', fontFamily:'inherit',
+                  boxShadow:'0 0 20px rgba(245,158,11,0.3)', transition:'all 0.2s',
+                }}>
+                  🎮 Try Demo — Free
+                </button>
+                <div style={{ fontSize:11, color:'#78716c', marginTop:8 }}>No wallet · no SOL · real game feel</div>
+              </div>
+
+              {/* Divider */}
+              <div style={{ display:'flex', alignItems:'center', gap:10, width:'100%' }}>
+                <div style={{ flex:1, height:1, background:'#27272a' }}/>
+                <span style={{ fontSize:11, color:'#3f3f46' }}>or play for real</span>
+                <div style={{ flex:1, height:1, background:'#27272a' }}/>
+              </div>
+
+              {/* Connect Wallet — secondary */}
+              <WalletMultiButton style={{ width:'100%', height:44, fontSize:14, background:'#7c3aed', justifyContent:'center' }}/>
+              <div style={{ fontSize:11, color:'#52525b', textAlign:'center' }}>0.01 SOL / attempt · win the pool</div>
             </div>
           ) : !round || round.status !== 'active' || winner ? null : (
             <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:11, alignItems:'center' }}>
