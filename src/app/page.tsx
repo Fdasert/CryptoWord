@@ -178,6 +178,7 @@ function DemoMultiplayer({ onExit }: { onExit: () => void }) {
   const feedRef  = useRef<HTMLDivElement>(null);
   const timerRef = useRef<any>(null);
   const sid = getSessionId();
+  const isMobile = useIsMobile();
 
   // Load/create demo round
   const loadRound = useCallback(async () => {
@@ -458,7 +459,11 @@ function DemoMultiplayer({ onExit }: { onExit: () => void }) {
           {/* Input + submit */}
           {!roundOver && !iWon && (
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 11, alignItems: 'center' }}>
-              <InputRow value={input} shake={shake} />
+              {isMobile ? (
+                <MobileInput value={input} onChange={setInput} onSubmit={submitGuess} shake={shake} disabled={busy} />
+              ) : (
+                <InputRow value={input} shake={shake} />
+              )}
               <button onClick={submitGuess} disabled={input.length !== WORD_LENGTH || busy} style={{
                 width: '100%', padding: '15px 0', borderRadius: 8, border: 'none',
                 background: input.length === WORD_LENGTH && !busy ? 'linear-gradient(135deg,#059669,#10b981)' : '#27272a',
@@ -512,6 +517,7 @@ function DemoMode({ onExit }: { onExit: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const feedRef  = useRef<HTMLDivElement>(null);
   const timerRef = useRef<any>(null);
+  const isMobile = useIsMobile();
 
   // auto-scroll feed
   useEffect(() => {
@@ -739,7 +745,11 @@ function DemoMode({ onExit }: { onExit: () => void }) {
           {/* Input + submit */}
           {!won && !roundOver && (
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 11, alignItems: 'center' }}>
-              <InputRow value={input} shake={shake} />
+              {isMobile ? (
+                <MobileInput value={input} onChange={setInput} onSubmit={submit} shake={shake} disabled={submitting} />
+              ) : (
+                <InputRow value={input} shake={shake} />
+              )}
               <button onClick={submit} disabled={input.length !== WORD_LENGTH || submitting} style={{
                 width: '100%', padding: '15px 0', borderRadius: 8, border: 'none',
                 background: input.length === WORD_LENGTH && !submitting ? 'linear-gradient(135deg,#059669,#10b981)' : '#27272a',
@@ -774,6 +784,74 @@ function DemoMode({ onExit }: { onExit: () => void }) {
 const edgeFn = (n: string) => `${SUPABASE_URL}/functions/v1/${n}`;
 const apiH   = () => ({ 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` });
 const short  = (w: string) => w.slice(0,4) + '..' + w.slice(-4);
+
+// ── Mobile detection ──────────────────────────────────────────────────────────
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  return isMobile;
+}
+
+// ── Mobile native input ───────────────────────────────────────────────────────
+function MobileInput({ value, onChange, onSubmit, shake, disabled }: {
+  value: string; onChange: (v: string) => void;
+  onSubmit: () => void; shake?: boolean; disabled?: boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+      {/* Tile preview */}
+      <div style={{ display: 'flex', gap: 4, animation: shake ? 'shake 0.4s' : undefined }}>
+        {Array.from({ length: WORD_LENGTH }).map((_, i) => {
+          const letter = value[i] ?? '';
+          return (
+            <div key={i} style={{
+              width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'transparent', border: `2px solid ${letter ? '#a78bfa' : '#3a3a3c'}`,
+              borderRadius: 4, fontSize: 19, fontWeight: 700, color: '#fff', textTransform: 'uppercase',
+              transition: 'border-color 0.15s',
+            }}>{letter}</div>
+          );
+        })}
+      </div>
+      {/* Native input (hidden visually but functional) */}
+      <input
+        ref={ref}
+        type="text"
+        inputMode="text"
+        autoCapitalize="characters"
+        autoCorrect="off"
+        autoComplete="off"
+        spellCheck={false}
+        value={value}
+        maxLength={WORD_LENGTH}
+        disabled={disabled}
+        onChange={e => onChange(e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, WORD_LENGTH))}
+        onKeyDown={e => { if (e.key === 'Enter') onSubmit(); }}
+        style={{
+          opacity: 0, position: 'absolute', pointerEvents: 'none', width: 1, height: 1,
+        }}
+      />
+      {/* Tap-to-type button */}
+      <button
+        onClick={() => ref.current?.focus()}
+        style={{
+          width: '100%', padding: '12px 0', borderRadius: 8,
+          border: '1px solid #3f3f46', background: '#18181b',
+          color: '#a1a1aa', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        }}
+      >
+        ⌨️ Tap to type
+      </button>
+    </div>
+  );
+}
 
 // ── Tile ──────────────────────────────────────────────────────────────────────
 function Tile({ letter, color }: { letter: string; color: Color }) {
@@ -821,7 +899,7 @@ function InputRow({ value, shake }: { value: string; shake: boolean }) {
 const KB = [['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Z','X','C','V','B','N','M','⌫']];
 function Keyboard({ lc, onKey }: { lc: Record<string,Color>; onKey:(k:string)=>void }) {
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'center' }}>
+    <div className='sol-keyboard' style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'center' }}>
       {KB.map((row,ri) => (
         <div key={ri} style={{ display:'flex', gap:5 }}>
           {row.map(k => {
@@ -955,6 +1033,7 @@ const AppContent = () => {
   const presenceRef = useRef<any>(null);
   const payoutRef = useRef<any>(null);
   const feedRef   = useRef<HTMLDivElement>(null);
+  const isMobile  = useIsMobile();
 
   // ── Presence & Online Counter ──
   useEffect(() => {
@@ -1301,7 +1380,7 @@ const AppContent = () => {
 
   // ── Render ──
   return (
-    <div style={{ minHeight:'100vh', background:'#09090b', color:'#fff', fontFamily:"'Space Grotesk',sans-serif", display:'flex', flexDirection:'column' }}>
+    <div style={{ minHeight:'100vh', background:'#09090b', color:'#fff', fontFamily:"'Space Grotesk',sans-serif", display:'flex', flexDirection:'column', overflowX:'hidden', maxWidth:'100vw' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -1323,10 +1402,16 @@ const AppContent = () => {
           .sol-timer-widget { padding: 12px 16px !important; }
           .sol-demo-cta { padding: 12px 10px !important; }
           .sol-demo-btn { font-size: 15px !important; padding: 13px 0 !important; }
+          .sol-keyboard { display: none !important; }
+          .sol-mobile-input { display: flex !important; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
           .wallet-adapter-button { width: 100% !important; justify-content: center !important; font-size: 14px !important; height: 44px !important; padding: 0 16px !important; }
           .wallet-adapter-button-trigger { width: 100% !important; }
         }
+        .sol-mobile-input { display: none; }
       `}</style>
+
+      {/* Prevent horizontal scroll */}
+      <style>{`html,body{overflow-x:hidden;max-width:100vw}`}</style>
 
       {/* Header */}
       <header className='sol-header' style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 24px', borderBottom:'1px solid #27272a' }}>
@@ -1597,7 +1682,10 @@ const AppContent = () => {
             <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:11, alignItems:'center' }}>
 
               {/* Input preview — only shown when has a pending payment */}
-              {hasPending && <InputRow value={input} shake={shake}/>}
+              {hasPending && !isMobile && <InputRow value={input} shake={shake}/>}
+              {hasPending && isMobile && (
+                <MobileInput value={input} onChange={setInput} onSubmit={submitGuess} shake={shake} disabled={busy} />
+              )}
 
               {/* PAY button — shown when no pending payment */}
               {!hasPending && (
