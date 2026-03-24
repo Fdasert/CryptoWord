@@ -1397,7 +1397,7 @@ const AppContent = () => {
 
   // ── Render ──
   return (
-    <div style={{ minHeight:'100vh', background:'#09090b', color:'#fff', fontFamily:"'Space Grotesk',sans-serif", display:'flex', flexDirection:'column', overflowX:'hidden', maxWidth:'100vw' }}>
+    <div style={{ minHeight:'100vh', background:'#09090b', color:'#fff', fontFamily:"'Space Grotesk',sans-serif", display:'flex', flexDirection:'column' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -1427,8 +1427,12 @@ const AppContent = () => {
         .sol-mobile-input { display: none; }
       `}</style>
 
-      {/* Prevent horizontal scroll */}
-      <style>{`html,body{max-width:100%;overflow-x:clip}`}</style>
+      {/* Prevent horizontal scroll without breaking Android momentum scroll */}
+      <style>{`
+        html { overflow-x: hidden; }
+        body { overflow-x: hidden; position: relative; }
+        * { min-width: 0; }
+      `}</style>
 
       {/* Header */}
       <header className='sol-header' style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 24px', borderBottom:'1px solid #27272a' }}>
