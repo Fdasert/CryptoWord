@@ -916,17 +916,20 @@ function InputRow({ value, shake }: { value: string; shake: boolean }) {
 const KB = [['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Z','X','C','V','B','N','M','⌫']];
 function Keyboard({ lc, onKey }: { lc: Record<string,Color>; onKey:(k:string)=>void }) {
   return (
-    <div className='sol-keyboard' style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'center' }}>
+    <div className='sol-keyboard' style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'center', width:'100%' }}>
       {KB.map((row,ri) => (
-        <div key={ri} style={{ display:'flex', gap:5 }}>
+        <div key={ri} style={{ display:'flex', gap:4, width:'100%', justifyContent:'center' }}>
           {row.map(k => {
             const c  = lc[k];
             const bg = c==='green'?'#538d4e': c==='yellow'?'#b59f3b': c==='gray'?'#3a3a3c': '#818384';
             return (
               <button key={k} onClick={() => onKey(k)} style={{
-                width: k==='ENTER'||k==='⌫' ? 58 : 36, height:54, background:bg,
+                flex: k==='ENTER'||k==='⌫' ? '1.6 0 0' : '1 0 0',
+                maxWidth: k==='ENTER'||k==='⌫' ? 58 : 42,
+                height: 54, background: bg,
                 border:'none', borderRadius:4, color:'#fff', fontWeight:700,
                 fontSize: k==='ENTER' ? 11 : 14, cursor:'pointer', transition:'background 0.2s',
+                padding: 0,
               }}>{k}</button>
             );
           })}
@@ -1397,7 +1400,7 @@ const AppContent = () => {
 
   // ── Render ──
   return (
-    <div style={{ minHeight:'100vh', background:'#09090b', color:'#fff', fontFamily:"'Space Grotesk',sans-serif", display:'flex', flexDirection:'column' }}>
+    <div style={{ minHeight:'100svh', background:'#09090b', color:'#fff', fontFamily:"'Space Grotesk',sans-serif", display:'flex', flexDirection:'column' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -1409,9 +1412,11 @@ const AppContent = () => {
 
         /* ── Mobile ── */
         @media(max-width:640px){
-          .sol-header { padding: 10px 14px !important; }
+          .sol-header { padding: 10px 12px !important; gap: 8px !important; }
           .sol-logo-sub { display: none !important; }
-          .sol-stats { padding: 8px 14px !important; gap: 8px !important; font-size: 12px !important; flex-wrap: wrap !important; }
+          .sol-howto-text { display: none !important; }
+          .sol-howto-btn { padding: 0 10px !important; font-size: 18px !important; }
+          .sol-stats { padding: 8px 12px !important; gap: 8px !important; font-size: 12px !important; flex-wrap: wrap !important; }
           .sol-body { padding: 10px 10px 24px !important; flex-direction: column !important; gap: 12px !important; }
           .sol-feed-col { padding-right: 0 !important; max-width: 100% !important; min-width: 0 !important; }
           .sol-feed-box { min-height: 180px !important; max-height: 240px !important; }
@@ -1420,18 +1425,15 @@ const AppContent = () => {
           .sol-demo-cta { padding: 12px 10px !important; }
           .sol-demo-btn { font-size: 15px !important; padding: 13px 0 !important; }
           .sol-keyboard { display: none !important; }
-          .sol-mobile-input { display: flex !important; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
           .wallet-adapter-button { width: 100% !important; justify-content: center !important; font-size: 14px !important; height: 44px !important; padding: 0 16px !important; }
           .wallet-adapter-button-trigger { width: 100% !important; }
         }
         .sol-mobile-input { display: none; }
       `}</style>
 
-      {/* Prevent horizontal scroll without breaking Android momentum scroll */}
+      {/* Prevent horizontal scroll on Android */}
       <style>{`
-        html { overflow-x: hidden; }
-        body { overflow-x: hidden; position: relative; }
-        * { min-width: 0; }
+        html, body { overflow-x: hidden; width: 100%; }
       `}</style>
 
       {/* Header */}
@@ -1442,16 +1444,16 @@ const AppContent = () => {
           <span className='sol-logo-sub' style={{ fontSize:11, color:'#52525b', marginLeft:4 }}>Guess the 7-letter word · win the pool</span>
         </a>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <button onClick={() => setShowHowTo(true)} style={{
+          <button className='sol-howto-btn' onClick={() => setShowHowTo(true)} style={{
             height:38, padding:'0 14px', borderRadius:8, border:'1px solid #3f3f46',
             background:'transparent', color:'#a1a1aa', fontSize:13, fontWeight:600,
             cursor:'pointer', display:'flex', alignItems:'center', gap:6, transition:'all 0.2s',
-            fontFamily:"inherit",
+            fontFamily:"inherit", flexShrink: 0,
           }}
             onMouseEnter={e=>(e.currentTarget.style.borderColor='#7c3aed',e.currentTarget.style.color='#a78bfa')}
             onMouseLeave={e=>(e.currentTarget.style.borderColor='#3f3f46',e.currentTarget.style.color='#a1a1aa')}
           >
-            <span style={{fontSize:16}}>?</span> How to Play
+            <span style={{fontSize:16}}>?</span><span className='sol-howto-text'> How to Play</span>
           </button>
           <WalletMultiButton style={{ height:38, fontSize:13, background:'#7c3aed' }}/>
         </div>
