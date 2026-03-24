@@ -1432,11 +1432,11 @@ const AppContent = () => {
 
       {/* Header */}
       <header className='sol-header' style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 24px', borderBottom:'1px solid #27272a' }}>
-        <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
-          <span style={{ fontSize:24, fontWeight:800, letterSpacing:-1 }}>WORD</span>
+        <a href="/" style={{ display:'flex', alignItems:'baseline', gap:8, textDecoration:'none', cursor:'pointer' }}>
+          <span style={{ fontSize:24, fontWeight:800, letterSpacing:-1, color:'#fff' }}>WORD</span>
           <span style={{ fontSize:24, fontWeight:800, color:'#a78bfa', letterSpacing:-1 }}>GUESS</span>
           <span className='sol-logo-sub' style={{ fontSize:11, color:'#52525b', marginLeft:4 }}>Guess the 7-letter word · win the pool</span>
-        </div>
+        </a>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <button onClick={() => setShowHowTo(true)} style={{
             height:38, padding:'0 14px', borderRadius:8, border:'1px solid #3f3f46',
