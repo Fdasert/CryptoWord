@@ -802,53 +802,70 @@ function MobileInput({ value, onChange, onSubmit, shake, disabled }: {
   value: string; onChange: (v: string) => void;
   onSubmit: () => void; shake?: boolean; disabled?: boolean;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when component mounts
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Strip non-alpha, uppercase, limit to WORD_LENGTH
+    const clean = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, WORD_LENGTH);
+    onChange(clean);
+    // Keep cursor always at end
+    const el = e.target;
+    requestAnimationFrame(() => {
+      el.setSelectionRange(clean.length, clean.length);
+    });
+  };
+
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
-      {/* Tile preview */}
-      <div style={{ display: 'flex', gap: 4, animation: shake ? 'shake 0.4s' : undefined }}>
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+      {/* Tiles + transparent input overlay */}
+      <div
+        style={{ position: 'relative', display: 'inline-flex', gap: 4, animation: shake ? 'shake 0.4s' : undefined }}
+        onClick={() => inputRef.current?.focus()}
+      >
         {Array.from({ length: WORD_LENGTH }).map((_, i) => {
           const letter = value[i] ?? '';
           return (
             <div key={i} style={{
               width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'transparent', border: `2px solid ${letter ? '#a78bfa' : '#3a3a3c'}`,
+              background: 'transparent',
+              border: `2px solid ${i === value.length ? '#a78bfa' : letter ? '#52525b' : '#3a3a3c'}`,
               borderRadius: 4, fontSize: 19, fontWeight: 700, color: '#fff', textTransform: 'uppercase',
               transition: 'border-color 0.15s',
             }}>{letter}</div>
           );
         })}
+        {/* Transparent input overlaid — captures keyboard */}
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="text"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          value={value}
+          disabled={disabled}
+          onChange={handleChange}
+          onKeyDown={e => { if (e.key === 'Enter') onSubmit(); }}
+          style={{
+            position: 'absolute', inset: 0,
+            opacity: 0, width: '100%', height: '100%',
+            cursor: 'text', fontSize: 16, /* prevent iOS zoom */
+          }}
+        />
       </div>
-      {/* Native input (hidden visually but functional) */}
-      <input
-        ref={ref}
-        type="text"
-        inputMode="text"
-        autoCapitalize="characters"
-        autoCorrect="off"
-        autoComplete="off"
-        spellCheck={false}
-        value={value}
-        maxLength={WORD_LENGTH}
-        disabled={disabled}
-        onChange={e => onChange(e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, WORD_LENGTH))}
-        onKeyDown={e => { if (e.key === 'Enter') onSubmit(); }}
-        style={{
-          opacity: 0, position: 'absolute', pointerEvents: 'none', width: 1, height: 1,
-        }}
-      />
-      {/* Tap-to-type button */}
-      <button
-        onClick={() => ref.current?.focus()}
-        style={{
-          width: '100%', padding: '12px 0', borderRadius: 8,
-          border: '1px solid #3f3f46', background: '#18181b',
-          color: '#a1a1aa', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        }}
+      {/* Tap to type hint */}
+      <div
+        onClick={() => inputRef.current?.focus()}
+        style={{ fontSize: 12, color: '#52525b', cursor: 'pointer' }}
       >
-        ⌨️ Tap to type
-      </button>
+        ⌨️ Tap tiles to type
+      </div>
     </div>
   );
 }
@@ -1411,7 +1428,7 @@ const AppContent = () => {
       `}</style>
 
       {/* Prevent horizontal scroll */}
-      <style>{`html,body{overflow-x:hidden;max-width:100vw}`}</style>
+      <style>{`html,body{max-width:100%;overflow-x:clip}`}</style>
 
       {/* Header */}
       <header className='sol-header' style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 24px', borderBottom:'1px solid #27272a' }}>
